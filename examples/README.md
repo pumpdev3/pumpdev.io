@@ -11,8 +11,7 @@ npm install @solana/web3.js bs58 ws dotenv
 ## 🚀 Quick Start
 
 1. Clone this repository
-2. Copy `.env.example` to `.env` and add your private key
-3. Run any example:
+2. Run any example:
 
 ```bash
 node buy-sell.js
@@ -36,6 +35,17 @@ node create-token.js
 - **Never commit your private keys** to version control
 - Use environment variables (`.env` file) for sensitive data
 - The API uses **client-side signing** — your keys never leave your machine
+
+### What is a Private Key?
+
+Your **private key** is a secret code (base58 string) that controls your Solana wallet. Think of it like a password that lets you send tokens and SOL.
+
+**How to get it:**
+- **Phantom**: Settings → Security & Privacy → Export Private Key
+- **Solflare**: Settings → Export Private Key
+- **CLI wallet**: Check your `~/.config/solana/id.json` file
+
+⚠️ **Never share your private key with anyone!** Anyone with your key can steal all your funds.
 
 ## 📖 Documentation
 
