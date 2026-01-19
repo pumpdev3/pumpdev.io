@@ -225,6 +225,28 @@ tx.sign([creatorKeypair, mintKeypair]);
 
 ---
 
+## Examples
+
+Working code examples in the [`/examples`](./examples) folder:
+
+| File | Description |
+|------|-------------|
+| [`buy-sell.js`](./examples/buy-sell.js) | Buy and sell tokens on Pump.fun |
+| [`websocket.js`](./examples/websocket.js) | Real-time trade data and new token alerts |
+| [`create-token.js`](./examples/create-token.js) | Launch new tokens with optional dev buy |
+| [`sniper-bot.js`](./examples/sniper-bot.js) | Automated new token sniper (educational) |
+| [`claim-fees.js`](./examples/claim-fees.js) | Claim creator fees from your tokens |
+| [`transfer.js`](./examples/transfer.js) | SOL transfer transactions |
+
+```bash
+# Run any example
+cd examples
+npm install @solana/web3.js bs58 ws dotenv
+node buy-sell.js
+```
+
+---
+
 ## Documentation
 
 Full documentation with detailed examples:
