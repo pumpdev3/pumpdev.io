@@ -1,6 +1,6 @@
 # PumpDev API
 
-### 🚀 The Fastest 3rd-Party API for Pump.fun Trading on Solana
+### 🚀 The #1 API for Pump.fun Token Creation, Trading & Jito Bundles
 
 [![Website](https://img.shields.io/badge/Website-pumpdev.io-7CFF6B?style=for-the-badge)](https://pumpdev.io)
 [![Docs](https://img.shields.io/badge/Docs-API%20Reference-blue?style=for-the-badge)](https://pumpdev.io/welcome)
@@ -11,28 +11,103 @@
 
 ## What is PumpDev?
 
-**PumpDev** is a comprehensive REST and WebSocket API for building trading bots, snipers, and automated systems on [Pump.fun](https://pump.fun) — Solana's leading memecoin launchpad.
+**PumpDev** is the fastest way to **create tokens on pump.fun** and execute **Jito bundles** for atomic token launches. Build trading bots, snipers, and automated token launchers on Solana's leading memecoin platform.
 
 - 🔐 **Client-Side Signing** — Your private keys never leave your machine
-- ⚡ **Low Latency** — Sub-second WebSocket data feeds
+- ⚡ **Jito Bundle Support** — Atomic pump.fun token creation + multiple buys in one block
 - 💰 **0.25% Commission** — Lowest fees in the market
 - 🛠️ **Developer-First** — Clean REST API with JavaScript/TypeScript examples
 
 ---
 
-## Features
+## Key Features
 
 | Feature | Description |
 |---------|-------------|
-| **Trading API** | Generate buy/sell transactions for any Pump.fun token |
-| **Token Creation** | Launch new memecoins with custom metadata and optional dev buys |
+| **Pump.fun Token Creation** | Create token on pump.fun with custom metadata and socials |
+| **Pump.fun Jito Bundle** | Launch token + dev buy + multiple buyers atomically |
+| **Trading API** | Generate buy/sell transactions for any pump.fun token |
 | **Real-Time WebSocket** | Stream live trades, new token launches, and wallet activity |
 | **Fee Claiming** | Automate creator royalty collection |
 | **SOL Transfers** | Build transfer transactions for wallet management |
 
 ---
 
-## Quick Start
+## 🆕 Pump.fun Jito Bundle - Atomic Token Launch
+
+Launch your token and execute multiple buys **in the same block** using Jito bundles. No more front-running!
+
+### Why Use Pump.fun Bundle?
+
+- ✅ **Atomic Execution** — Create + buy happens together or not at all
+- ✅ **No Front-Running** — All transactions land in the same block
+- ✅ **Multiple Buyers** — Creator + up to 3 additional wallets
+- ✅ **Better Launch** — Start with instant buy pressure
+
+### Pump.fun Token Bundle Example
+
+```javascript
+import { VersionedTransaction, Connection, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
+
+const API_URL = 'https://pumpdev.io';
+
+// Create pump.fun token with Jito bundle
+async function createPumpfunToken() {
+  const creator = Keypair.fromSecretKey(bs58.decode('YOUR_CREATOR_KEY'));
+  const buyer1 = Keypair.fromSecretKey(bs58.decode('YOUR_BUYER1_KEY'));
+  const buyer2 = Keypair.fromSecretKey(bs58.decode('YOUR_BUYER2_KEY'));
+  
+  // 1. Request bundle transactions from API
+  const response = await fetch(`${API_URL}/api/create-bundle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      publicKey: creator.publicKey.toBase58(),
+      name: 'PUMP FUN API',
+      symbol: 'pumpdev.io',
+      uri: 'https://ipfs.io/ipfs/YOUR_METADATA_URI',
+      buyAmountSol: 0.5,        // Creator's dev buy
+      slippage: 30,
+      jitoTip: 0.01,            // Jito tip for bundle priority
+      additionalBuyers: [
+        { publicKey: buyer1.publicKey.toBase58(), amountSol: 1.0 },
+        { publicKey: buyer2.publicKey.toBase58(), amountSol: 0.5 },
+      ]
+    })
+  });
+
+  const result = await response.json();
+  const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
+  
+  // 2. Sign all transactions
+  const wallets = { creator, buyer1, buyer2 };
+  const signedTxs = result.transactions.map((txInfo) => {
+    const tx = VersionedTransaction.deserialize(bs58.decode(txInfo.transaction));
+    const signers = txInfo.signers.map(s => s === 'mint' ? mintKeypair : wallets[s]);
+    tx.sign(signers.filter(Boolean));
+    return bs58.encode(tx.serialize());
+  });
+
+  // 3. Send Jito bundle
+  const bundleResponse = await fetch('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'sendBundle',
+      params: [signedTxs]
+    })
+  });
+
+  console.log(`Token created: https://pump.fun/${result.mint}`);
+}
+```
+
+---
+
+## Quick Start - Create Token on Pump.fun
 
 ### Installation
 
@@ -40,19 +115,61 @@
 npm install @solana/web3.js bs58
 ```
 
-### Buy Tokens
+### Simple Pump.fun Token Creation
 
 ```javascript
 import { VersionedTransaction, Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 
 const API_URL = 'https://pumpdev.io';
-const RPC_URL = 'https://api.mainnet-beta.solana.com';
 
+async function createToken() {
+  const creator = Keypair.fromSecretKey(bs58.decode('YOUR_PRIVATE_KEY'));
+  
+  const response = await fetch(`${API_URL}/api/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      publicKey: creator.publicKey.toBase58(),
+      name: 'PUMP FUN API',
+      symbol: 'pumpdev.io',
+      uri: 'https://ipfs.io/ipfs/...',  // Upload to pump.fun/api/ipfs first
+      buyAmountSol: 0.1,    // Optional dev buy
+      slippage: 30,
+      jitoTip: 0.01
+    })
+  });
+
+  const result = await response.json();
+  const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
+  
+  // Sign transactions
+  const signedTxs = result.transactions.map((txInfo) => {
+    const tx = VersionedTransaction.deserialize(bs58.decode(txInfo.transaction));
+    const signers = txInfo.signers.includes('mint') ? [creator, mintKeypair] : [creator];
+    tx.sign(signers);
+    return bs58.encode(tx.serialize());
+  });
+
+  // Send via Jito
+  await fetch('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'sendBundle', params: [signedTxs] })
+  });
+
+  console.log(`✅ Token: https://pump.fun/${result.mint}`);
+}
+```
+
+---
+
+## Buy Tokens on Pump.fun
+
+```javascript
 async function buyToken(privateKey, mint, amountSol) {
   const keypair = Keypair.fromSecretKey(bs58.decode(privateKey));
   
-  // 1. Get unsigned transaction from API
   const response = await fetch(`${API_URL}/api/trade-local`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -67,20 +184,20 @@ async function buyToken(privateKey, mint, amountSol) {
     })
   });
 
-  // 2. Sign locally (your keys never leave your machine)
   const data = await response.arrayBuffer();
   const tx = VersionedTransaction.deserialize(new Uint8Array(data));
   tx.sign([keypair]);
 
-  // 3. Send via your own RPC
-  const connection = new Connection(RPC_URL, 'confirmed');
+  const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
   const signature = await connection.sendTransaction(tx);
   
   console.log('Transaction:', `https://solscan.io/tx/${signature}`);
 }
 ```
 
-### Sell Tokens
+---
+
+## Sell Tokens on Pump.fun
 
 ```javascript
 // Sell 100% of tokens
@@ -98,7 +215,9 @@ const response = await fetch(`${API_URL}/api/trade-local`, {
 });
 ```
 
-### Real-Time WebSocket Data
+---
+
+## Real-Time WebSocket Data
 
 ```javascript
 import WebSocket from 'ws';
@@ -106,7 +225,7 @@ import WebSocket from 'ws';
 const ws = new WebSocket('wss://pumpdev.io/ws');
 
 ws.on('open', () => {
-  // Subscribe to new token launches
+  // Subscribe to new pump.fun token launches
   ws.send(JSON.stringify({ method: 'subscribeNewToken' }));
   
   // Subscribe to specific token trades
@@ -137,37 +256,15 @@ ws.on('message', (data) => {
 });
 ```
 
-### Create New Token
-
-```javascript
-const response = await fetch(`${API_URL}/api/create`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    publicKey: 'YourPublicKey',
-    name: 'My Token',
-    symbol: 'MTK',
-    uri: 'https://ipfs.io/ipfs/...',  // Upload metadata to pump.fun/api/ipfs first
-    priorityFee: 0.001,
-    amount: 1,       // Optional: Dev buy 1 SOL worth
-    slippage: 30
-  })
-});
-
-const { transaction, mint, mintSecretKey } = await response.json();
-
-// Sign with BOTH creator wallet AND mint keypair
-tx.sign([creatorKeypair, mintKeypair]);
-```
-
 ---
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/api/create` | POST | Create token on pump.fun (with optional dev buy) |
+| `/api/create-bundle` | POST | **Pump.fun Jito bundle** - create + multiple buyers |
 | `/api/trade-local` | POST | Generate buy/sell transactions |
-| `/api/create` | POST | Create new token transactions |
 | `/api/claim-account` | POST | Claim creator fees |
 | `/api/transfer` | POST | Transfer specific SOL amount |
 | `/api/transfer-all` | POST | Transfer entire wallet balance |
@@ -192,6 +289,8 @@ tx.sign([creatorKeypair, mintKeypair]);
 
 | Operation | Fee |
 |-----------|-----|
+| Create Token on Pump.fun | **FREE** |
+| Pump.fun Token Launch Bundle | 0.25% of buys |
 | Buy Tokens | 0.25% |
 | Sell Tokens | 0.25% |
 | Create Token | **FREE** |
@@ -203,21 +302,24 @@ tx.sign([creatorKeypair, mintKeypair]);
 
 ---
 
-## Why PumpDev?
+## Why PumpDev for Pump.fun Token Creation?
 
 | Feature | PumpDev | Others |
 |---------|---------|--------|
+| Jito Bundle Support | **Yes** | Limited |
 | Commission | **0.25%** | 1% |
 | Private Key Security | **Local signing** | Some require managed wallets |
-| WebSocket Data | **Free, unlimited** | Often paid or rate-limited |
-| Token Creation | **Free** | Sometimes charged |
+| Multiple Buyers Bundle | **Up to 4 wallets** | Often just 1 |
+| WebSocket Data | **Free, unlimited** | Often paid |
 
 ---
 
 ## Use Cases
 
+- 🚀 **Pump.fun Token Creator** — Launch memecoins with dev buys
+- 🎯 **Sniper Bots** — Instant buys on new token launches  
+- 📦 **Jito Bundle Launchers** — Atomic multi-wallet token launches
 - 🤖 **Trading Bots** — Automated buy/sell strategies
-- 🎯 **Sniper Bots** — Instant buys on new token launches
 - 📊 **Analytics Dashboards** — Real-time market monitoring
 - 🐋 **Whale Trackers** — Follow smart money movements
 - 🚀 **Token Launchers** — Automated token deployment systems
@@ -252,6 +354,8 @@ node buy-sell.js
 Full documentation with detailed examples:
 
 - [Getting Started](https://pumpdev.io/welcome)
+- [Create Token on Pump.fun](https://pumpdev.io/create-token)
+- [Pump.fun Jito Bundle Guide](https://pumpdev.io/jito-bundle)
 - [Trading API](https://pumpdev.io/trade-api)
 - [Token Creation](https://pumpdev.io/create-token)
 - [Real-Time Data](https://pumpdev.io/data-api)

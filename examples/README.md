@@ -11,7 +11,8 @@ npm install @solana/web3.js bs58 ws dotenv
 ## 🚀 Quick Start
 
 1. Clone this repository
-2. Run any example:
+2. Copy `.env.example` to `.env` and add your private key
+3. Run any example:
 
 ```bash
 node buy-sell.js

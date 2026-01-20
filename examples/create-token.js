@@ -1,12 +1,20 @@
 /**
- * PumpDev API Example: Create New Token
+ * ============================================================================
+ * PumpDev API - Create Token on Pump.fun
+ * ============================================================================
  * 
- * This example demonstrates how to:
- * 1. Upload metadata to Pump.fun IPFS
- * 2. Create a new token (with or without dev buy)
- * 3. Sign with both creator and mint keypairs
+ * This example shows how to create tokens on pump.fun using the PumpDev API.
+ * 
+ * Features:
+ * - Create token only (no buy)
+ * - Create token + dev buy (Jito bundle)
+ * - Create token + multiple buyers (Jito bundle)
  * 
  * Documentation: https://pumpdev.io/create-token
+ * Telegram: https://t.me/pumpdev_io
+ * Twitter: https://x.com/PumpDevIO
+ * 
+ * ============================================================================
  */
 
 import dotenv from 'dotenv';
@@ -14,248 +22,407 @@ dotenv.config();
 
 import { VersionedTransaction, Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
-import fs from 'node:fs/promises';
-import { Blob } from 'node:buffer';
 
-// Configuration
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+// PumpDev API URL - use https://pumpdev.io for production
 const API_URL = process.env.PUMPDEV_API_URL || 'https://pumpdev.io';
-const RPC_URL = process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
 
-// Validate environment
-if (!PRIVATE_KEY) {
-  console.error('❌ PRIVATE_KEY not set in environment variables!');
-  console.error('   Copy .env.example to .env and add your private key');
-  process.exit(1);
-}
+// Your Solana RPC endpoint
+const RPC_URL = process.env.RPC_URL || 'https://api.mainnet-beta.solana.com';
+
+// Jito block engine endpoints for bundle submission
+const JITO_ENDPOINTS = [
+  'https://mainnet.block-engine.jito.wtf',
+  'https://amsterdam.mainnet.block-engine.jito.wtf',
+  'https://frankfurt.mainnet.block-engine.jito.wtf',
+  'https://ny.mainnet.block-engine.jito.wtf',
+  'https://tokyo.mainnet.block-engine.jito.wtf'
+];
+
+// Your wallet private keys (base58 encoded)
+// ⚠️ NEVER commit real private keys to git!
+const CREATOR_KEY = process.env.CREATOR_KEY || 'YOUR_CREATOR_PRIVATE_KEY_BASE58';
+const BUYER1_KEY = process.env.BUYER1_KEY || 'YOUR_BUYER1_PRIVATE_KEY_BASE58';
+const BUYER2_KEY = process.env.BUYER2_KEY || 'YOUR_BUYER2_PRIVATE_KEY_BASE58';
+const BUYER3_KEY = process.env.BUYER3_KEY || 'YOUR_BUYER3_PRIVATE_KEY_BASE58';
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Step 1: Upload metadata to Pump.fun IPFS
- * This creates the token image and metadata URI
+ * Upload token metadata to pump.fun IPFS
+ * 
+ * This creates the token image and metadata that will be displayed on pump.fun.
+ * You can customize the name, symbol, description, and social links.
+ * 
+ * @returns {Promise<string>} The metadata URI (ipfs://...)
  */
-async function uploadMetadata(imagePath, tokenInfo) {
-  console.log('=== UPLOADING METADATA ===\n');
-
-  const formData = new FormData();
-
-  // Add image file
-  const fileBuffer = await fs.readFile(imagePath);
-  const blob = new Blob([fileBuffer], { type: 'image/jpeg' });
-  formData.append('file', blob, 'token-image.jpg');
+async function uploadMetadata() {
+  console.log('📤 Uploading metadata to pump.fun...');
   
-  // Add token metadata
-  formData.append('name', tokenInfo.name);
-  formData.append('symbol', tokenInfo.symbol);
-  formData.append('description', tokenInfo.description);
-  formData.append('twitter', tokenInfo.twitter || '');
-  formData.append('telegram', tokenInfo.telegram || '');
-  formData.append('website', tokenInfo.website || '');
+  const formData = new FormData();
+  
+  // Option 1: Use pumpdev.io logo (for testing)
+  const logoRes = await fetch('https://pumpdev.io/img/logo.jpg');
+  const logoBuffer = await logoRes.arrayBuffer();
+  formData.append('file', new Blob([logoBuffer], { type: 'image/jpeg' }), 'logo.jpg');
+  
+  // Option 2: Use your own image file
+  // import fs from 'node:fs/promises';
+  // import { Blob } from 'node:buffer';
+  // const fileBuffer = await fs.readFile('./your-token-image.jpg');
+  // formData.append('file', new Blob([fileBuffer], { type: 'image/jpeg' }), 'token.jpg');
+  
+  // Token metadata - customize these for your token!
+  formData.append('name', 'PUMP FUN API');
+  formData.append('symbol', 'pumpdev.io');
+  formData.append('description', 'The #1 API for Pump.fun Token Creation & Trading - pumpdev.io');
+  formData.append('twitter', 'https://x.com/PumpDevIO');
+  formData.append('telegram', 'https://t.me/pumpdev_io');
+  formData.append('website', 'https://pumpdev.io/');
   formData.append('showName', 'true');
 
-  // Upload to Pump.fun IPFS
-  const response = await fetch('https://pump.fun/api/ipfs', {
-    method: 'POST',
-    body: formData
+  const res = await fetch('https://pump.fun/api/ipfs', { 
+    method: 'POST', 
+    body: formData 
   });
-
-  if (!response.ok) {
-    throw new Error('Failed to upload metadata');
-  }
-
-  const result = await response.json();
-  console.log('✅ Metadata uploaded!');
-  console.log('URI:', result.metadataUri);
   
+  const result = await res.json();
+  console.log('✅ Metadata uploaded:', result.metadataUri);
   return result.metadataUri;
 }
 
 /**
- * Step 2a: Create token WITHOUT dev buy
+ * Send transactions as a Jito bundle
+ * 
+ * Jito bundles ensure all transactions land in the same block atomically.
+ * This prevents front-running and ensures create + buy happen together.
+ * 
+ * @param {string[]} signedTxs - Array of base58 encoded signed transactions
+ * @returns {Promise<{success: boolean, bundleId?: string, error?: string}>}
  */
-async function createToken(metadataUri, tokenInfo) {
-  console.log('\n=== CREATING TOKEN ===\n');
-
-  const keypair = Keypair.fromSecretKey(bs58.decode(PRIVATE_KEY));
-  const publicKey = keypair.publicKey.toBase58();
-
-  console.log('Creator:', publicKey);
-  console.log('Name:', tokenInfo.name);
-  console.log('Symbol:', tokenInfo.symbol);
-
-  // Build create transaction
-  const response = await fetch(`${API_URL}/api/create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      publicKey: publicKey,
-      name: tokenInfo.name,
-      symbol: tokenInfo.symbol,
-      uri: metadataUri,
-      priorityFee: 0.001
-    })
-  });
-
-  if (response.status !== 200) {
-    const error = await response.json();
-    console.error('API Error:', error);
-    return null;
-  }
-
-  const result = await response.json();
-
-  console.log('\nNew token mint:', result.mint);
-  console.log('Mint secret key:', result.mintSecretKey);
-
-  // Deserialize transaction
-  const tx = VersionedTransaction.deserialize(bs58.decode(result.transaction));
-
-  // Sign with BOTH keypairs (creator + mint)
-  const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
-
-  console.log('\nSigning with:');
-  console.log('  - Creator:', publicKey);
-  console.log('  - Mint:', mintKeypair.publicKey.toBase58());
-
-  tx.sign([keypair, mintKeypair]);
-
-  // Send to Solana
-  const connection = new Connection(RPC_URL, 'confirmed');
-
-  try {
-    const signature = await connection.sendTransaction(tx, {
-      skipPreflight: false,
-      maxRetries: 3
-    });
-
-    console.log('\n✅ Transaction sent!');
-    console.log('Signature:', signature);
-    console.log(`\nView token: https://pump.fun/${result.mint}`);
-    console.log(`Solscan: https://solscan.io/tx/${signature}`);
-
-    // Wait for confirmation
-    const confirmation = await connection.confirmTransaction(signature, 'confirmed');
-    
-    if (confirmation.value.err) {
-      console.error('Transaction failed:', confirmation.value.err);
-      return null;
+async function sendJitoBundle(signedTxs) {
+  console.log('🚀 Sending Jito bundle...');
+  
+  // Try each endpoint until one succeeds
+  for (const endpoint of JITO_ENDPOINTS) {
+    try {
+      const res = await fetch(`${endpoint}/api/v1/bundles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'sendBundle',
+          params: [signedTxs]
+        })
+      });
+      
+      const data = await res.json();
+      
+      if (data.result) {
+        console.log(`✅ Bundle sent successfully!`);
+        console.log(`   Bundle ID: ${data.result}`);
+        console.log(`   Explorer: https://explorer.jito.wtf/bundle/${data.result}`);
+        return { success: true, bundleId: data.result };
+      }
+      
+      if (data.error) {
+        console.log(`⚠️ ${endpoint.split('//')[1].split('.')[0]}: ${data.error.message}`);
+      }
+    } catch (err) {
+      continue; // Try next endpoint
     }
-    
-    console.log('\n🎉 Token created successfully!');
-    return result.mint;
-  } catch (err) {
-    console.error('Send error:', err.message);
-    return null;
   }
+  
+  return { success: false, error: 'All Jito endpoints failed' };
 }
 
 /**
- * Step 2b: Create token WITH dev buy (instant buy on creation)
+ * Wait for token to appear on-chain
+ * 
+ * @param {Connection} connection - Solana connection
+ * @param {PublicKey} mintPubkey - Token mint public key
+ * @param {number} maxWaitSec - Maximum seconds to wait
+ * @returns {Promise<boolean>} True if token found
  */
-async function createTokenWithDevBuy(metadataUri, tokenInfo, devBuyAmountSol) {
-  console.log('\n=== CREATING TOKEN + DEV BUY ===\n');
+async function waitForToken(connection, mintPubkey, maxWaitSec = 30) {
+  console.log('⏳ Waiting for confirmation...');
+  
+  for (let i = 0; i < maxWaitSec / 2; i++) {
+    await wait(2000);
+    const info = await connection.getAccountInfo(mintPubkey);
+    if (info) {
+      console.log('✅ Token confirmed on-chain!');
+      return true;
+    }
+    process.stdout.write('.');
+  }
+  
+  console.log('\n⚠️ Token not confirmed in time (may still be processing)');
+  return false;
+}
 
-  const keypair = Keypair.fromSecretKey(bs58.decode(PRIVATE_KEY));
-  const publicKey = keypair.publicKey.toBase58();
+// ============================================================================
+// EXAMPLE 1: Create Token Only (No Buy)
+// ============================================================================
 
-  console.log('Creator:', publicKey);
-  console.log('Name:', tokenInfo.name);
-  console.log('Symbol:', tokenInfo.symbol);
-  console.log('Dev Buy:', devBuyAmountSol, 'SOL');
-
-  // Build create + dev buy transaction
-  const response = await fetch(`${API_URL}/api/create`, {
+/**
+ * Create a token on pump.fun without any initial purchase.
+ * 
+ * This is the simplest way to launch a token. The token will be created
+ * and anyone can buy it immediately after.
+ */
+async function createTokenOnly() {
+  console.log('\n========================================');
+  console.log('EXAMPLE 1: Create Token Only');
+  console.log('========================================\n');
+  
+  // Load creator wallet
+  const creator = Keypair.fromSecretKey(bs58.decode(CREATOR_KEY));
+  console.log('👤 Creator:', creator.publicKey.toBase58());
+  
+  // Step 1: Upload metadata
+  const uri = await uploadMetadata();
+  
+  // Step 2: Request create transaction from PumpDev API
+  console.log('\n📝 Building create transaction...');
+  const res = await fetch(`${API_URL}/api/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      publicKey: publicKey,
-      name: tokenInfo.name,
-      symbol: tokenInfo.symbol,
-      uri: metadataUri,
-      priorityFee: 0.001,
-      amount: devBuyAmountSol,  // Dev buy amount in SOL
-      slippage: 30             // Slippage for dev buy
+      publicKey: creator.publicKey.toBase58(),
+      name: 'PUMP FUN API',
+      symbol: 'pumpdev.io',
+      uri,
+      jitoTip: 0.01  // Jito tip for faster landing
     })
   });
-
-  if (response.status !== 200) {
-    const error = await response.json();
-    console.error('API Error:', error);
-    return null;
+  
+  const result = await res.json();
+  if (res.status !== 200) {
+    throw new Error(result.error || 'API request failed');
   }
-
-  const result = await response.json();
-
-  console.log('\nNew token mint:', result.mint);
-  console.log('Dev buy:', result.devBuy);
-
-  // Deserialize transaction
-  const tx = VersionedTransaction.deserialize(bs58.decode(result.transaction));
-
-  // Sign with BOTH keypairs
+  
+  console.log('📍 Mint address:', result.mint);
+  
+  // Step 3: Sign transaction
+  // Token creation requires TWO signatures: creator + mint keypair
   const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
-  tx.sign([keypair, mintKeypair]);
+  const tx = VersionedTransaction.deserialize(bs58.decode(result.transactions[0].transaction));
+  tx.sign([creator, mintKeypair]);
+  
+  // Step 4: Send via Jito bundle
+  const bundleRes = await sendJitoBundle([bs58.encode(tx.serialize())]);
+  
+  // Done!
+  console.log('\n========================================');
+  console.log('🎉 Token created!');
+  console.log(`🔗 https://pump.fun/${result.mint}`);
+  console.log('========================================\n');
+}
 
-  // Send to Solana
+// ============================================================================
+// EXAMPLE 2: Create Token + Dev Buy (Jito Bundle)
+// ============================================================================
+
+/**
+ * Create a token AND buy some tokens in the same block.
+ * 
+ * This is the recommended approach for token launches. The create and buy
+ * transactions are bundled together via Jito, ensuring they execute
+ * atomically in the same block. No one can front-run your dev buy!
+ * 
+ * The API returns multiple transactions that need to be signed and sent
+ * as a Jito bundle.
+ */
+async function createTokenWithDevBuy() {
+  console.log('\n========================================');
+  console.log('EXAMPLE 2: Create Token + Dev Buy');
+  console.log('========================================\n');
+  
   const connection = new Connection(RPC_URL, 'confirmed');
-
-  try {
-    const signature = await connection.sendTransaction(tx, {
-      skipPreflight: false,
-      maxRetries: 3
-    });
-
-    console.log('\n✅ Transaction sent!');
-    console.log('Signature:', signature);
-    console.log(`\nView token: https://pump.fun/${result.mint}`);
-    console.log(`Solscan: https://solscan.io/tx/${signature}`);
-
-    const confirmation = await connection.confirmTransaction(signature, 'confirmed');
-    
-    if (confirmation.value.err) {
-      console.error('Transaction failed:', confirmation.value.err);
-      return null;
-    }
-    
-    console.log('\n🎉 Token created with dev buy successfully!');
-    return result.mint;
-  } catch (err) {
-    console.error('Send error:', err.message);
-    return null;
+  const creator = Keypair.fromSecretKey(bs58.decode(CREATOR_KEY));
+  console.log('👤 Creator:', creator.publicKey.toBase58());
+  
+  // Step 1: Upload metadata
+  const uri = await uploadMetadata();
+  
+  // Step 2: Request create + buy transactions
+  console.log('\n📝 Building create + buy transactions...');
+  const res = await fetch(`${API_URL}/api/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      publicKey: creator.publicKey.toBase58(),
+      name: 'PUMP FUN API',
+      symbol: 'pumpdev.io',
+      uri,
+      buyAmountSol: 0.1,     // Dev buy: 0.1 SOL worth of tokens
+      slippage: 30,           // 30% slippage for new token
+      jitoTip: 0.01,          // Jito tip for bundle priority
+      priorityFee: 0.0005     // Solana priority fee
+    })
+  });
+  
+  const result = await res.json();
+  if (res.status !== 200) {
+    throw new Error(result.error || 'API request failed');
   }
+  
+  console.log('📍 Mint address:', result.mint);
+  console.log(`📦 Transactions: ${result.transactions.length}`);
+  
+  // Step 3: Sign all transactions
+  const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
+  
+  const signedTxs = result.transactions.map((txInfo) => {
+    const tx = VersionedTransaction.deserialize(bs58.decode(txInfo.transaction));
+    
+    // Create tx needs creator + mint signatures
+    // Buy tx only needs creator signature
+    const signers = txInfo.signers.includes('mint') 
+      ? [creator, mintKeypair] 
+      : [creator];
+    
+    tx.sign(signers);
+    console.log(`✅ Signed: ${txInfo.description}`);
+    return bs58.encode(tx.serialize());
+  });
+  
+  // Step 4: Send as Jito bundle
+  const bundleRes = await sendJitoBundle(signedTxs);
+  
+  if (bundleRes.success) {
+    await waitForToken(connection, mintKeypair.publicKey);
+  }
+  
+  // Done!
+  console.log('\n========================================');
+  console.log('🎉 Token created with dev buy!');
+  console.log(`🔗 https://pump.fun/${result.mint}`);
+  console.log('========================================\n');
 }
 
-// Main execution
+// ============================================================================
+// EXAMPLE 3: Create Token + Multiple Buyers (Jito Bundle)
+// ============================================================================
+
+/**
+ * Create a token with multiple wallets buying atomically.
+ * 
+ * This is perfect for coordinated launches where you want multiple
+ * wallets to buy in the same block as the token creation. All transactions
+ * are bundled via Jito, so they either all succeed or all fail together.
+ * 
+ * Use case: Launch token with dev buy + 3 additional buyers for instant volume.
+ */
+async function createTokenWithMultipleBuyers() {
+  console.log('\n========================================');
+  console.log('EXAMPLE 3: Create Token + Multiple Buyers');
+  console.log('========================================\n');
+  
+  const connection = new Connection(RPC_URL, 'confirmed');
+  
+  // Load all wallets
+  const creator = Keypair.fromSecretKey(bs58.decode(CREATOR_KEY));
+  const buyer1 = Keypair.fromSecretKey(bs58.decode(BUYER1_KEY));
+  const buyer2 = Keypair.fromSecretKey(bs58.decode(BUYER2_KEY));
+  const buyer3 = Keypair.fromSecretKey(bs58.decode(BUYER3_KEY));
+  const wallets = { creator, buyer1, buyer2, buyer3 };
+  
+  console.log('👤 Creator:', creator.publicKey.toBase58());
+  console.log('👤 Buyer 1:', buyer1.publicKey.toBase58());
+  console.log('👤 Buyer 2:', buyer2.publicKey.toBase58());
+  console.log('👤 Buyer 3:', buyer3.publicKey.toBase58());
+  
+  // Step 1: Upload metadata
+  const uri = await uploadMetadata();
+  
+  // Step 2: Request create + multi-buy bundle
+  console.log('\n📝 Building multi-buyer bundle...');
+  const res = await fetch(`${API_URL}/api/create-bundle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      publicKey: creator.publicKey.toBase58(),
+      name: 'PUMP FUN API',
+      symbol: 'pumpdev.io',
+      uri,
+      buyAmountSol: 0.1,       // Creator buys 0.1 SOL
+      slippage: 30,
+      jitoTip: 0.02,           // Higher tip for larger bundle
+      additionalBuyers: [       // Up to 3 additional buyers
+        { publicKey: buyer1.publicKey.toBase58(), amountSol: 0.2 },
+        { publicKey: buyer2.publicKey.toBase58(), amountSol: 0.3 },
+        { publicKey: buyer3.publicKey.toBase58(), amountSol: 0.1 }
+      ]
+    })
+  });
+  
+  const result = await res.json();
+  if (res.status !== 200) {
+    throw new Error(result.error || 'API request failed');
+  }
+  
+  console.log('📍 Mint address:', result.mint);
+  console.log(`📦 Transactions: ${result.transactions.length}`);
+  
+  // Step 3: Sign all transactions with appropriate signers
+  const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
+  
+  const signedTxs = result.transactions.map((txInfo) => {
+    const tx = VersionedTransaction.deserialize(bs58.decode(txInfo.transaction));
+    
+    // Map signer names to actual keypairs
+    const signers = txInfo.signers
+      .map((s) => (s === 'mint' ? mintKeypair : wallets[s]))
+      .filter(Boolean);
+    
+    tx.sign(signers);
+    console.log(`✅ Signed: ${txInfo.description}`);
+    return bs58.encode(tx.serialize());
+  });
+  
+  // Step 4: Send as Jito bundle
+  const bundleRes = await sendJitoBundle(signedTxs);
+  
+  if (bundleRes.success) {
+    await waitForToken(connection, mintKeypair.publicKey);
+  }
+  
+  // Done!
+  console.log('\n========================================');
+  console.log('🎉 Token created with multiple buyers!');
+  console.log(`🔗 https://pump.fun/${result.mint}`);
+  console.log('========================================\n');
+}
+
+// ============================================================================
+// MAIN
+// ============================================================================
+
 async function main() {
-  try {
-    // Token configuration
-    const tokenInfo = {
-      name: 'My Awesome Token',
-      symbol: 'MAT',
-      description: 'The most awesome token on Pump.fun!',
-      twitter: 'https://twitter.com/mytoken',
-      telegram: 'https://t.me/mytoken',
-      website: 'https://mytoken.com'
-    };
-
-    // Step 1: Upload metadata (update image path)
-    const metadataUri = await uploadMetadata('./token-image.jpg', tokenInfo);
-
-    if (!metadataUri) {
-      console.error('Failed to upload metadata');
-      return;
-    }
-
-    // Step 2: Choose one option:
-
-    // Option A: Create token only (no dev buy)
-    // await createToken(metadataUri, tokenInfo);
-
-    // Option B: Create token + dev buy (1 SOL)
-    await createTokenWithDevBuy(metadataUri, tokenInfo, 1);
-
-  } catch (err) {
-    console.error('Error:', err);
-  }
+  console.log('');
+  console.log('╔════════════════════════════════════════╗');
+  console.log('║   PumpDev API - Token Creation Demo    ║');
+  console.log('║   https://pumpdev.io                   ║');
+  console.log('╚════════════════════════════════════════╝');
+  
+  // Choose which example to run:
+  
+  // await createTokenOnly();              // Just create token
+  await createTokenWithDevBuy();           // Create + dev buy (RECOMMENDED)
+  // await createTokenWithMultipleBuyers(); // Create + multiple buyers
 }
 
-main();
+main().catch((err) => {
+  console.error('\n❌ Error:', err.message);
+  process.exit(1);
+});
