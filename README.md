@@ -33,81 +33,7 @@
 
 ---
 
-## 🆕 Pump.fun Jito Bundle - Atomic Token Launch
-
-Launch your token and execute multiple buys **in the same block** using Jito bundles. No more front-running!
-
-### Why Use Pump.fun Bundle?
-
-- ✅ **Atomic Execution** — Create + buy happens together or not at all
-- ✅ **No Front-Running** — All transactions land in the same block
-- ✅ **Multiple Buyers** — Creator + up to 3 additional wallets
-- ✅ **Better Launch** — Start with instant buy pressure
-
-### Pump.fun Token Bundle Example
-
-```javascript
-import { VersionedTransaction, Connection, Keypair } from '@solana/web3.js';
-import bs58 from 'bs58';
-
-const API_URL = 'https://pumpdev.io';
-
-// Create pump.fun token with Jito bundle
-async function createPumpfunToken() {
-  const creator = Keypair.fromSecretKey(bs58.decode('YOUR_CREATOR_KEY'));
-  const buyer1 = Keypair.fromSecretKey(bs58.decode('YOUR_BUYER1_KEY'));
-  const buyer2 = Keypair.fromSecretKey(bs58.decode('YOUR_BUYER2_KEY'));
-  
-  // 1. Request bundle transactions from API
-  const response = await fetch(`${API_URL}/api/create-bundle`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      publicKey: creator.publicKey.toBase58(),
-      name: 'PUMP FUN API',
-      symbol: 'pumpdev.io',
-      uri: 'https://ipfs.io/ipfs/YOUR_METADATA_URI',
-      buyAmountSol: 0.5,        // Creator's dev buy
-      slippage: 30,
-      jitoTip: 0.01,            // Jito tip for bundle priority
-      additionalBuyers: [
-        { publicKey: buyer1.publicKey.toBase58(), amountSol: 1.0 },
-        { publicKey: buyer2.publicKey.toBase58(), amountSol: 0.5 },
-      ]
-    })
-  });
-
-  const result = await response.json();
-  const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
-  
-  // 2. Sign all transactions
-  const wallets = { creator, buyer1, buyer2 };
-  const signedTxs = result.transactions.map((txInfo) => {
-    const tx = VersionedTransaction.deserialize(bs58.decode(txInfo.transaction));
-    const signers = txInfo.signers.map(s => s === 'mint' ? mintKeypair : wallets[s]);
-    tx.sign(signers.filter(Boolean));
-    return bs58.encode(tx.serialize());
-  });
-
-  // 3. Send Jito bundle
-  const bundleResponse = await fetch('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'sendBundle',
-      params: [signedTxs]
-    })
-  });
-
-  console.log(`Token created: https://pump.fun/${result.mint}`);
-}
-```
-
----
-
-## Quick Start - Create Token on Pump.fun
+## Quick Start
 
 ### Installation
 
@@ -115,7 +41,35 @@ async function createPumpfunToken() {
 npm install @solana/web3.js bs58
 ```
 
-### Simple Pump.fun Token Creation
+### Step 1: Upload Metadata to Pump.fun IPFS
+
+```javascript
+async function uploadMetadata() {
+  const formData = new FormData();
+  
+  // Add token image
+  const imageResponse = await fetch('https://example.com/your-logo.jpg');
+  const imageBuffer = await imageResponse.arrayBuffer();
+  formData.append('file', new Blob([imageBuffer], { type: 'image/jpeg' }), 'logo.jpg');
+  
+  // Add token info
+  formData.append('name', 'PUMP FUN API');
+  formData.append('symbol', 'pumpdev.io');
+  formData.append('description', 'Your token description');
+  formData.append('twitter', 'https://x.com/YourTwitter');
+  formData.append('telegram', 'https://t.me/YourTelegram');
+  formData.append('website', 'https://yourwebsite.com');
+  formData.append('showName', 'true');
+
+  const res = await fetch('https://pump.fun/api/ipfs', { method: 'POST', body: formData });
+  const { metadataUri } = await res.json();
+  
+  console.log('Metadata URI:', metadataUri);
+  return metadataUri;
+}
+```
+
+### Step 2: Create Token (No Dev Buy)
 
 ```javascript
 import { VersionedTransaction, Connection, Keypair } from '@solana/web3.js';
@@ -133,32 +87,23 @@ async function createToken() {
       publicKey: creator.publicKey.toBase58(),
       name: 'PUMP FUN API',
       symbol: 'pumpdev.io',
-      uri: 'https://ipfs.io/ipfs/...',  // Upload to pump.fun/api/ipfs first
-      buyAmountSol: 0.1,    // Optional dev buy
-      slippage: 30,
-      jitoTip: 0.01
+      uri: metadataUri  // From Step 1
     })
   });
 
   const result = await response.json();
   const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
   
-  // Sign transactions
-  const signedTxs = result.transactions.map((txInfo) => {
-    const tx = VersionedTransaction.deserialize(bs58.decode(txInfo.transaction));
-    const signers = txInfo.signers.includes('mint') ? [creator, mintKeypair] : [creator];
-    tx.sign(signers);
-    return bs58.encode(tx.serialize());
-  });
+  // Sign transaction
+  const tx = VersionedTransaction.deserialize(bs58.decode(result.transactions[0].transaction));
+  tx.sign([creator, mintKeypair]);
 
-  // Send via Jito
-  await fetch('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'sendBundle', params: [signedTxs] })
-  });
+  // Send transaction
+  const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+  const signature = await connection.sendTransaction(tx);
 
   console.log(`✅ Token: https://pump.fun/${result.mint}`);
+  console.log(`Transaction: https://solscan.io/tx/${signature}`);
 }
 ```
 
@@ -178,9 +123,7 @@ async function buyToken(privateKey, mint, amountSol) {
       action: 'buy',
       mint: mint,
       amount: amountSol,
-      denominatedInSol: 'true',
-      slippage: 15,
-      priorityFee: 0.0005
+      slippage: 99,
     })
   });
 
@@ -209,15 +152,227 @@ const response = await fetch(`${API_URL}/api/trade-local`, {
     action: 'sell',
     mint: 'TokenMintAddress',
     amount: '100%',           // Supports: '100%', '50%', or exact amount
-    denominatedInSol: 'false',
-    slippage: 15
+    slippage: 99
   })
 });
+
+const data = await response.arrayBuffer();
+const tx = VersionedTransaction.deserialize(new Uint8Array(data));
+tx.sign([keypair]);
+
+const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+const signature = await connection.sendTransaction(tx);
+
+console.log('Transaction:', `https://solscan.io/tx/${signature}`);
 ```
 
 ---
 
-## Real-Time WebSocket Data
+## ⚡ Jito Bundles - Advanced
+
+Jito bundles execute multiple transactions **atomically in the same block**. Use bundles for:
+- Token creation with dev buy
+- Multi-wallet coordinated launches
+- Fast batch sell operations
+
+### Why Use Jito Bundles?
+
+- ✅ **Atomic Execution** — All transactions succeed or fail together
+- ✅ **No Front-Running** — Everything lands in the same block
+- ✅ **Multiple Wallets** — Creator + up to 3 additional buyers
+- ✅ **Speed** — Single API call for multiple transactions
+
+---
+
+### Create Token with Dev Buy (Bundle)
+
+```javascript
+import { VersionedTransaction, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
+
+const API_URL = 'https://pumpdev.io';
+
+async function createTokenWithDevBuy() {
+  const creator = Keypair.fromSecretKey(bs58.decode('YOUR_PRIVATE_KEY'));
+
+  const response = await fetch(`${API_URL}/api/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      publicKey: creator.publicKey.toBase58(),
+      name: 'PUMP FUN API',
+      symbol: 'pumpdev.io',
+      uri: 'https://ipfs.io/ipfs/...',
+      buyAmountSol: 0.5,      // Dev buy amount
+      slippage: 30,
+      jitoTip: 0.01
+    })
+  });
+
+  const result = await response.json();
+  const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
+
+  // Sign all transactions (create + dev buy)
+  const signedTxs = result.transactions.map((txInfo) => {
+    const tx = VersionedTransaction.deserialize(bs58.decode(txInfo.transaction));
+    const signers = txInfo.signers.includes('mint') ? [creator, mintKeypair] : [creator];
+    tx.sign(signers);
+    return bs58.encode(tx.serialize());
+  });
+
+  // Send via Jito bundle
+  await fetch('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'sendBundle', params: [signedTxs] })
+  });
+
+  console.log(`✅ Token: https://pump.fun/${result.mint}`);
+}
+```
+
+---
+
+### Multi-Buyer Bundle Launch
+
+Create token + multiple wallets buy atomically:
+
+```javascript
+async function createMultiBuyerBundle() {
+  const creator = Keypair.fromSecretKey(bs58.decode('CREATOR_KEY'));
+  const buyer1 = Keypair.fromSecretKey(bs58.decode('BUYER1_KEY'));
+  const buyer2 = Keypair.fromSecretKey(bs58.decode('BUYER2_KEY'));
+
+  const response = await fetch(`${API_URL}/api/create-bundle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      publicKey: creator.publicKey.toBase58(),
+      name: 'PUMP FUN API',
+      symbol: 'pumpdev.io',
+      uri: 'https://ipfs.io/ipfs/...',
+      buyAmountSol: 0.5,          // Creator dev buy
+      slippage: 30,
+      jitoTip: 0.01,
+      additionalBuyers: [
+        { publicKey: buyer1.publicKey.toBase58(), amountSol: 1.0 },
+        { publicKey: buyer2.publicKey.toBase58(), amountSol: 0.5 }
+      ]
+    })
+  });
+
+  const result = await response.json();
+  const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
+  const wallets = { creator, buyer1, buyer2 };
+
+  // Sign each transaction with appropriate signers
+  const signedTxs = result.transactions.map((txInfo) => {
+    const tx = VersionedTransaction.deserialize(bs58.decode(txInfo.transaction));
+    const signers = txInfo.signers.map(s => s === 'mint' ? mintKeypair : wallets[s]).filter(Boolean);
+    tx.sign(signers);
+    return bs58.encode(tx.serialize());
+  });
+
+  // Send Jito bundle
+  await fetch('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'sendBundle', params: [signedTxs] })
+  });
+
+  console.log(`✅ Token: https://pump.fun/${result.mint}`);
+}
+```
+
+---
+
+## 🚀 FAST Bundle Sell - Multiple Accounts in ONE Request
+
+Build sell transactions for **multiple wallets in a single API call**. This is **3-4x faster** than making individual `/api/trade-local` calls!
+
+### Why Use Bundle Sell?
+
+| Individual Calls | Bundle Call |
+|-----------------|-------------|
+| N HTTP round-trips | **1 HTTP round-trip** |
+| N blockhash fetches | **1 shared blockhash** |
+| N bonding curve lookups | **1 shared lookup** |
+| ~400-800ms for 4 accounts | **~100-200ms for 4 accounts** |
+
+### Bundle Sell Example
+
+```javascript
+import { VersionedTransaction, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
+
+const API_URL = 'https://pumpdev.io';
+
+async function sellBundleFast(mint, accounts, creatorPublicKey) {
+  // 1. Build ALL transactions in ONE API call
+  const response = await fetch(`${API_URL}/api/trade-bundle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      accounts: accounts.map(acc => ({
+        publicKey: acc.keypair.publicKey.toBase58(),
+        name: acc.name,
+      })),
+      action: 'sell',
+      mint: mint,
+      amount: '100%',
+      slippage: 99,
+      priorityFee: 0.005,
+      creator: creatorPublicKey, // SPEED: skip bonding curve lookup
+    }),
+  });
+
+  const result = await response.json();
+  console.log(`Built ${result.stats.success}/${result.stats.total} in ${result.stats.durationMs}ms`);
+
+  // 2. Sign and send each transaction
+  for (const txInfo of result.transactions) {
+    if (!txInfo.transaction) continue;
+    
+    const account = accounts.find(a => a.name === txInfo.name);
+    const tx = VersionedTransaction.deserialize(bs58.decode(txInfo.transaction));
+    tx.sign([account.keypair]);
+    
+    const signature = await connection.sendTransaction(tx, { skipPreflight: true });
+    console.log(`${txInfo.name} sent: ${signature}`);
+  }
+}
+
+// Usage
+const accounts = [
+  { name: 'creator', keypair: Keypair.fromSecretKey(bs58.decode('...')) },
+  { name: 'bundle1', keypair: Keypair.fromSecretKey(bs58.decode('...')) },
+  { name: 'bundle2', keypair: Keypair.fromSecretKey(bs58.decode('...')) },
+];
+
+await sellBundleFast('TokenMint', accounts, accounts[0].keypair.publicKey.toBase58());
+```
+
+### Bundle Sell Response
+
+```javascript
+{
+  transactions: [
+    { name: 'creator', transaction: 'base58_encoded_tx', error: null },
+    { name: 'bundle1', transaction: 'base58_encoded_tx', error: null },
+    { name: 'bundle2', transaction: null, error: 'No token balance found' },
+  ],
+  stats: {
+    total: 3,
+    success: 2,
+    failed: 1,
+    durationMs: 150
+  }
+}
+```
+
+---
+
+## Real-Time WebSocket Pump.fun Data (No pumpswap migration token data available at the moment)
 
 ```javascript
 import WebSocket from 'ws';
@@ -265,6 +420,7 @@ ws.on('message', (data) => {
 | `/api/create` | POST | Create token on pump.fun (with optional dev buy) |
 | `/api/create-bundle` | POST | **Pump.fun Jito bundle** - create + multiple buyers |
 | `/api/trade-local` | POST | Generate buy/sell transactions |
+| `/api/trade-bundle` | POST | **🚀 FAST** - Build multiple sell txs in ONE request |
 | `/api/claim-account` | POST | Claim creator fees |
 | `/api/transfer` | POST | Transfer specific SOL amount |
 | `/api/transfer-all` | POST | Transfer entire wallet balance |
