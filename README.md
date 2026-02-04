@@ -1,6 +1,6 @@
 # PumpDev API
 
-### 🚀 The #1 API for Pump.fun Token Creation, Trading & Jito Bundles
+### 🚀 The cheapest API for Pump.fun Token Creation, Trading & Jito Bundles
 
 [![Website](https://img.shields.io/badge/Website-pumpdev.io-7CFF6B?style=for-the-badge)](https://pumpdev.io)
 [![Docs](https://img.shields.io/badge/Docs-API%20Reference-blue?style=for-the-badge)](https://pumpdev.io/welcome)
@@ -75,12 +75,10 @@ async function uploadMetadata() {
 import { VersionedTransaction, Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 
-const API_URL = 'https://pumpdev.io';
-
 async function createToken() {
   const creator = Keypair.fromSecretKey(bs58.decode('YOUR_PRIVATE_KEY'));
   
-  const response = await fetch(`${API_URL}/api/create`, {
+  const response = await fetch('https://pumpdev.io/api/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -115,7 +113,7 @@ async function createToken() {
 async function buyToken(privateKey, mint, amountSol) {
   const keypair = Keypair.fromSecretKey(bs58.decode(privateKey));
   
-  const response = await fetch(`${API_URL}/api/trade-local`, {
+  const response = await fetch('https://pumpdev.io/api/trade-local', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -144,7 +142,7 @@ async function buyToken(privateKey, mint, amountSol) {
 
 ```javascript
 // Sell 100% of tokens
-const response = await fetch(`${API_URL}/api/trade-local`, {
+const response = await fetch('https://pumpdev.io/api/trade-local', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -190,12 +188,10 @@ Jito bundles execute multiple transactions **atomically in the same block**. Use
 import { VersionedTransaction, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 
-const API_URL = 'https://pumpdev.io';
-
 async function createTokenWithDevBuy() {
   const creator = Keypair.fromSecretKey(bs58.decode('YOUR_PRIVATE_KEY'));
 
-  const response = await fetch(`${API_URL}/api/create`, {
+  const response = await fetch('https://pumpdev.io/api/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -243,7 +239,7 @@ async function createMultiBuyerBundle() {
   const buyer1 = Keypair.fromSecretKey(bs58.decode('BUYER1_KEY'));
   const buyer2 = Keypair.fromSecretKey(bs58.decode('BUYER2_KEY'));
 
-  const response = await fetch(`${API_URL}/api/create-bundle`, {
+  const response = await fetch('https://pumpdev.io/api/create-bundle', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -286,6 +282,92 @@ async function createMultiBuyerBundle() {
 
 ---
 
+## 🚀 FAST Bundle Buy - Multiple Accounts in ONE Request
+
+Build buy transactions for **multiple wallets in a single API call**. This is **3-4x faster** than making individual `/api/trade-local` calls!
+
+### Why Use Bundle Buy?
+
+| Individual Calls | Bundle Call |
+|-----------------|-------------|
+| N HTTP round-trips | **1 HTTP round-trip** |
+| N blockhash fetches | **1 shared blockhash** |
+| N bonding curve lookups | **1 shared lookup** |
+| ~400-800ms for 4 accounts | **~100-200ms for 4 accounts** |
+
+### Bundle Buy Example
+
+```javascript
+import { VersionedTransaction, Keypair, Connection } from '@solana/web3.js';
+import bs58 from 'bs58';
+
+async function buyBundleFast(mint, accounts, creatorPublicKey) {
+  // 1. Build ALL transactions in ONE API call
+  const response = await fetch('https://pumpdev.io/api/trade-bundle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      accounts: accounts.map(acc => ({
+        publicKey: acc.keypair.publicKey.toBase58(),
+        name: acc.name,
+        amount: acc.amount,  // SOL amount per account
+      })),
+      action: 'buy',
+      mint: mint,
+      slippage: 99,
+      priorityFee: 0.005,
+      creator: creatorPublicKey, // SPEED: skip bonding curve lookup
+    }),
+  });
+
+  const result = await response.json();
+  console.log(`Built ${result.stats.success}/${result.stats.total} in ${result.stats.durationMs}ms`);
+
+  // 2. Sign and send each transaction
+  const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+  
+  for (const txInfo of result.transactions) {
+    if (!txInfo.transaction) continue;
+    
+    const account = accounts.find(a => a.name === txInfo.name);
+    const tx = VersionedTransaction.deserialize(bs58.decode(txInfo.transaction));
+    tx.sign([account.keypair]);
+    
+    const signature = await connection.sendTransaction(tx, { skipPreflight: true });
+    console.log(`${txInfo.name} sent: ${signature}`);
+  }
+}
+
+// Usage
+const accounts = [
+  { name: 'buyer1', keypair: Keypair.fromSecretKey(bs58.decode('...')), amount: 0.5 },
+  { name: 'buyer2', keypair: Keypair.fromSecretKey(bs58.decode('...')), amount: 1.0 },
+  { name: 'buyer3', keypair: Keypair.fromSecretKey(bs58.decode('...')), amount: 0.25 },
+];
+
+await buyBundleFast('TokenMint', accounts, 'CreatorPublicKey');
+```
+
+### Bundle Buy Response
+
+```javascript
+{
+  transactions: [
+    { name: 'buyer1', transaction: 'base58_encoded_tx', error: null },
+    { name: 'buyer2', transaction: 'base58_encoded_tx', error: null },
+    { name: 'buyer3', transaction: null, error: 'Insufficient SOL balance' },
+  ],
+  stats: {
+    total: 3,
+    success: 2,
+    failed: 1,
+    durationMs: 150
+  }
+}
+```
+
+---
+
 ## 🚀 FAST Bundle Sell - Multiple Accounts in ONE Request
 
 Build sell transactions for **multiple wallets in a single API call**. This is **3-4x faster** than making individual `/api/trade-local` calls!
@@ -305,11 +387,9 @@ Build sell transactions for **multiple wallets in a single API call**. This is *
 import { VersionedTransaction, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 
-const API_URL = 'https://pumpdev.io';
-
 async function sellBundleFast(mint, accounts, creatorPublicKey) {
   // 1. Build ALL transactions in ONE API call
-  const response = await fetch(`${API_URL}/api/trade-bundle`, {
+  const response = await fetch('https://pumpdev.io/api/trade-bundle', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -420,7 +500,7 @@ ws.on('message', (data) => {
 | `/api/create` | POST | Create token on pump.fun (with optional dev buy) |
 | `/api/create-bundle` | POST | **Pump.fun Jito bundle** - create + multiple buyers |
 | `/api/trade-local` | POST | Generate buy/sell transactions |
-| `/api/trade-bundle` | POST | **🚀 FAST** - Build multiple sell txs in ONE request |
+| `/api/trade-bundle` | POST | **🚀 FAST** - Build multiple buy/sell txs in ONE request |
 | `/api/claim-account` | POST | Claim creator fees |
 | `/api/transfer` | POST | Transfer specific SOL amount |
 | `/api/transfer-all` | POST | Transfer entire wallet balance |
