@@ -7,8 +7,13 @@
  * 
  * Features:
  * - Create token only (no buy)
- * - Create token + dev buy (Jito bundle)
+ * - Create token + dev buy (single transaction, no Jito needed!)
+ * - Create token + dev buy via Jito (for faster landing)
  * - Create token + multiple buyers (Jito bundle)
+ * 
+ * IMPORTANT: jitoTip should ONLY be provided if you plan to send via Jito.
+ * It adds a Jito tip instruction to the transaction. Without it, the tx
+ * can be sent via any standard RPC.
  * 
  * Documentation: https://pumpdev.io/create-token
  * Telegram: https://t.me/pumpdev_io
@@ -104,6 +109,9 @@ async function uploadMetadata() {
  * Jito bundles ensure all transactions land in the same block atomically.
  * This prevents front-running and ensures create + buy happen together.
  * 
+ * NOTE: Only use Jito when your transaction includes a jitoTip.
+ * The jitoTip adds a tip instruction to the transaction that pays Jito validators.
+ * 
  * @param {string[]} signedTxs - Array of base58 encoded signed transactions
  * @returns {Promise<{success: boolean, bundleId?: string, error?: string}>}
  */
@@ -178,6 +186,8 @@ async function waitForToken(connection, mintPubkey, maxWaitSec = 30) {
  * 
  * This is the simplest way to launch a token. The token will be created
  * and anyone can buy it immediately after.
+ * 
+ * Sends via Jito — jitoTip is provided so the tx includes a Jito tip instruction.
  */
 async function createTokenOnly() {
   console.log('\n========================================');
@@ -201,7 +211,9 @@ async function createTokenOnly() {
       name: 'PUMP FUN API',
       symbol: 'pumpdev.io',
       uri,
-      jitoTip: 0.01  // Jito tip for faster landing
+      // jitoTip only needed because we're sending via Jito below
+      // Omit jitoTip if sending via standard RPC
+      jitoTip: 0.01
     })
   });
   
@@ -215,10 +227,10 @@ async function createTokenOnly() {
   // Step 3: Sign transaction
   // Token creation requires TWO signatures: creator + mint keypair
   const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
-  const tx = VersionedTransaction.deserialize(bs58.decode(result.transactions[0].transaction));
+  const tx = VersionedTransaction.deserialize(bs58.decode(result.transaction));
   tx.sign([creator, mintKeypair]);
   
-  // Step 4: Send via Jito bundle
+  // Step 4: Send via Jito (jitoTip was included in the request)
   const bundleRes = await sendJitoBundle([bs58.encode(tx.serialize())]);
   
   // Done!
@@ -229,22 +241,21 @@ async function createTokenOnly() {
 }
 
 // ============================================================================
-// EXAMPLE 2: Create Token + Dev Buy (Jito Bundle)
+// EXAMPLE 2: Create Token + Dev Buy (Single TX, No Jito Needed!)
 // ============================================================================
 
 /**
- * Create a token AND buy some tokens in the same block.
+ * Create a token AND buy tokens in a SINGLE transaction.
  * 
- * This is the recommended approach for token launches. The create and buy
- * transactions are bundled together via Jito, ensuring they execute
- * atomically in the same block. No one can front-run your dev buy!
+ * This is the recommended approach for simple token launches.
+ * The API merges create + buy into ONE atomic transaction.
+ * No Jito bundle needed — just sign and send via any standard RPC!
  * 
- * The API returns multiple transactions that need to be signed and sent
- * as a Jito bundle.
+ * KEY: No jitoTip is set here — we're sending via standard RPC.
  */
 async function createTokenWithDevBuy() {
   console.log('\n========================================');
-  console.log('EXAMPLE 2: Create Token + Dev Buy');
+  console.log('EXAMPLE 2: Create + Dev Buy (No Jito)');
   console.log('========================================\n');
   
   const connection = new Connection(RPC_URL, 'confirmed');
@@ -254,8 +265,9 @@ async function createTokenWithDevBuy() {
   // Step 1: Upload metadata
   const uri = await uploadMetadata();
   
-  // Step 2: Request create + buy transactions
-  console.log('\n📝 Building create + buy transactions...');
+  // Step 2: Request create + buy as single transaction
+  // No jitoTip — not needed when sending via standard RPC
+  console.log('\n📝 Building create + buy transaction...');
   const res = await fetch(`${API_URL}/api/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -264,10 +276,11 @@ async function createTokenWithDevBuy() {
       name: 'PUMP FUN API',
       symbol: 'pumpdev.io',
       uri,
-      buyAmountSol: 0.1,     // Dev buy: 0.1 SOL worth of tokens
-      slippage: 30,           // 30% slippage for new token
-      jitoTip: 0.01,          // Jito tip for bundle priority
-      priorityFee: 0.0005     // Solana priority fee
+      buyAmountSol: 0.1,       // Dev buy: 0.1 SOL worth of tokens
+      slippage: 30,             // 30% slippage for new token
+      priorityFee: 0.0005      // Solana priority fee
+      // NO jitoTip — sending via standard RPC, not Jito
+      // Only provide jitoTip if you plan to send via Jito (see Example 2b)
     })
   });
   
@@ -277,27 +290,104 @@ async function createTokenWithDevBuy() {
   }
   
   console.log('📍 Mint address:', result.mint);
-  console.log(`📦 Transactions: ${result.transactions.length}`);
   
-  // Step 3: Sign all transactions
+  // Step 3: Sign the single transaction with creator + mint keypair
   const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
+  const tx = VersionedTransaction.deserialize(bs58.decode(result.transaction));
+  tx.sign([creator, mintKeypair]);
   
-  const signedTxs = result.transactions.map((txInfo) => {
-    const tx = VersionedTransaction.deserialize(bs58.decode(txInfo.transaction));
-    
-    // Create tx needs creator + mint signatures
-    // Buy tx only needs creator signature
-    const signers = txInfo.signers.includes('mint') 
-      ? [creator, mintKeypair] 
-      : [creator];
-    
-    tx.sign(signers);
-    console.log(`✅ Signed: ${txInfo.description}`);
-    return bs58.encode(tx.serialize());
+  // Step 4: Send via standard RPC (no Jito needed!)
+  console.log('📤 Sending via standard RPC...');
+  const sig = await connection.sendRawTransaction(tx.serialize(), {
+    skipPreflight: true,
+    maxRetries: 3
+  });
+  console.log(`📤 Sent: ${sig}`);
+  
+  // Step 5: Confirm transaction
+  console.log('⏳ Confirming transaction...');
+  const confirmation = await connection.confirmTransaction(sig, 'confirmed');
+  if (confirmation.value.err) {
+    // Fetch transaction logs for debugging
+    try {
+      const txDetails = await connection.getTransaction(sig, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0
+      });
+      if (txDetails?.meta?.logMessages) {
+        console.error('📋 Transaction logs:');
+        txDetails.meta.logMessages.forEach((log) => console.error('  ', log));
+      }
+    } catch (e) { /* logs may not be available yet */ }
+    throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+  }
+  
+  // Done!
+  console.log('\n========================================');
+  console.log('🎉 Token created with dev buy!');
+  console.log(`🔗 https://pump.fun/${result.mint}`);
+  console.log(`🔍 https://solscan.io/tx/${sig}`);
+  console.log('========================================\n');
+}
+
+// ============================================================================
+// EXAMPLE 2b: Create Token + Dev Buy (via Jito for Faster Landing)
+// ============================================================================
+
+/**
+ * Same as Example 2 but sends via Jito for faster transaction landing.
+ * 
+ * The ONLY difference is:
+ * - jitoTip is provided (adds a Jito tip instruction to the tx)
+ * - Transaction is sent via Jito bundle instead of standard RPC
+ * 
+ * KEY: jitoTip is ONLY provided because we're sending via Jito.
+ * Do NOT set jitoTip if you're sending via standard RPC — it would
+ * waste SOL on a tip that serves no purpose.
+ */
+async function createTokenWithDevBuyJito() {
+  console.log('\n========================================');
+  console.log('EXAMPLE 2b: Create + Dev Buy (via Jito)');
+  console.log('========================================\n');
+  
+  const connection = new Connection(RPC_URL, 'confirmed');
+  const creator = Keypair.fromSecretKey(bs58.decode(CREATOR_KEY));
+  console.log('👤 Creator:', creator.publicKey.toBase58());
+  
+  // Step 1: Upload metadata
+  const uri = await uploadMetadata();
+  
+  // Step 2: Request create + buy — WITH jitoTip because sending via Jito
+  console.log('\n📝 Building create + buy transaction (with Jito tip)...');
+  const res = await fetch(`${API_URL}/api/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      publicKey: creator.publicKey.toBase58(),
+      name: 'PUMP FUN API',
+      symbol: 'pumpdev.io',
+      uri,
+      buyAmountSol: 0.1,       // Dev buy: 0.1 SOL worth of tokens
+      slippage: 30,             // 30% slippage for new token
+      priorityFee: 0.0005,     // Solana priority fee
+      jitoTip: 0.01            // Only provide when sending via Jito — adds tip instruction
+    })
   });
   
-  // Step 4: Send as Jito bundle
-  const bundleRes = await sendJitoBundle(signedTxs);
+  const result = await res.json();
+  if (res.status !== 200) {
+    throw new Error(result.error || 'API request failed');
+  }
+  
+  console.log('📍 Mint address:', result.mint);
+  
+  // Step 3: Sign the single transaction
+  const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
+  const tx = VersionedTransaction.deserialize(bs58.decode(result.transaction));
+  tx.sign([creator, mintKeypair]);
+  
+  // Step 4: Send via Jito (jitoTip was included so tx has a tip instruction)
+  const bundleRes = await sendJitoBundle([bs58.encode(tx.serialize())]);
   
   if (bundleRes.success) {
     await waitForToken(connection, mintKeypair.publicKey);
@@ -305,7 +395,7 @@ async function createTokenWithDevBuy() {
   
   // Done!
   console.log('\n========================================');
-  console.log('🎉 Token created with dev buy!');
+  console.log('🎉 Token created with dev buy (via Jito)!');
   console.log(`🔗 https://pump.fun/${result.mint}`);
   console.log('========================================\n');
 }
@@ -322,6 +412,9 @@ async function createTokenWithDevBuy() {
  * are bundled via Jito, so they either all succeed or all fail together.
  * 
  * Use case: Launch token with dev buy + 3 additional buyers for instant volume.
+ * 
+ * NOTE: This uses /api/create-bundle which returns MULTIPLE transactions.
+ * jitoTip is required here since bundles are always sent via Jito.
  */
 async function createTokenWithMultipleBuyers() {
   console.log('\n========================================');
@@ -346,6 +439,7 @@ async function createTokenWithMultipleBuyers() {
   const uri = await uploadMetadata();
   
   // Step 2: Request create + multi-buy bundle
+  // jitoTip is required for bundles — always sent via Jito
   console.log('\n📝 Building multi-buyer bundle...');
   const res = await fetch(`${API_URL}/api/create-bundle`, {
     method: 'POST',
@@ -357,7 +451,7 @@ async function createTokenWithMultipleBuyers() {
       uri,
       buyAmountSol: 0.1,       // Creator buys 0.1 SOL
       slippage: 30,
-      jitoTip: 0.02,           // Higher tip for larger bundle
+      jitoTip: 0.02,           // Jito tip — required for bundle, sent via Jito
       additionalBuyers: [       // Up to 3 additional buyers
         { publicKey: buyer1.publicKey.toBase58(), amountSol: 0.2 },
         { publicKey: buyer2.publicKey.toBase58(), amountSol: 0.3 },
@@ -417,9 +511,10 @@ async function main() {
   
   // Choose which example to run:
   
-  // await createTokenOnly();              // Just create token
-  await createTokenWithDevBuy();           // Create + dev buy (RECOMMENDED)
-  // await createTokenWithMultipleBuyers(); // Create + multiple buyers
+  // await createTokenOnly();              // Just create token (via Jito)
+  await createTokenWithDevBuy();           // Create + dev buy via RPC (RECOMMENDED, no Jito needed!)
+  // await createTokenWithDevBuyJito();    // Create + dev buy via Jito (for faster landing)
+  // await createTokenWithMultipleBuyers(); // Create + multiple buyers (Jito bundle)
 }
 
 main().catch((err) => {
