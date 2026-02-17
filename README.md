@@ -372,6 +372,40 @@ await sellBundleFast('TokenMint', accounts, accounts[0].keypair.publicKey.toBase
 
 ---
 
+## Claim Creator Fees (Fee Sharing Support)
+
+Claim creator fees with full support for pump.fun's **fee sharing** feature. If you have rewards distributed to multiple addresses (50/50 split, etc.), just include the `mint` parameter and the API auto-detects the sharing config:
+
+```javascript
+async function claimFees(publicKey, mint = null) {
+  const body = { publicKey, priorityFee: 0.0001 };
+  if (mint) body.mint = mint; // Required when fee sharing is configured!
+
+  const response = await fetch(`${API_URL}/api/claim-account`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  const data = await response.arrayBuffer();
+  const tx = VersionedTransaction.deserialize(new Uint8Array(data));
+  tx.sign([keypair]);
+
+  const signature = await connection.sendTransaction(tx, { skipPreflight: false });
+  console.log('Claimed:', signature);
+}
+
+// Standard claim (no fee sharing)
+await claimFees('YourPublicKey');
+
+// Fee sharing claim (rewards split to multiple addresses)
+await claimFees('YourPublicKey', 'TokenMintAddress');
+```
+
+> **Important**: If claiming fails and you have fee sharing configured on pump.fun, make sure to include the `mint` parameter. Without it, the API uses the standard claim instruction which can't access the fee-sharing vault.
+
+---
+
 ## Real-Time WebSocket Pump.fun Data (No pumpswap migration token data available at the moment)
 
 ```javascript
@@ -421,7 +455,8 @@ ws.on('message', (data) => {
 | `/api/create-bundle` | POST | **Pump.fun Jito bundle** - create + multiple buyers |
 | `/api/trade-local` | POST | Generate buy/sell transactions |
 | `/api/trade-bundle` | POST | **🚀 FAST** - Build multiple sell txs in ONE request |
-| `/api/claim-account` | POST | Claim creator fees |
+| `/api/claim-account` | POST | Claim creator fees (standard) |
+| `/api/claim-distribute` | POST | Distribute creator fees (fee sharing / reward split) |
 | `/api/transfer` | POST | Transfer specific SOL amount |
 | `/api/transfer-all` | POST | Transfer entire wallet balance |
 | `/ws` | WebSocket | Real-time market data streaming |

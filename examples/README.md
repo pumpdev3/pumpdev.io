@@ -28,8 +28,22 @@ node create-token.js
 | [`websocket.js`](./websocket.js) | Real-time trade data and new token alerts |
 | [`create-token.js`](./create-token.js) | Launch new tokens with optional dev buy |
 | [`sniper-bot.js`](./sniper-bot.js) | Automated new token sniper (educational) |
-| [`claim-fees.js`](./claim-fees.js) | Claim creator fees from your tokens |
+| [`claim-fees.js`](./claim-fees.js) | Claim creator fees (supports fee sharing) |
 | [`transfer.js`](./transfer.js) | SOL transfer transactions |
+
+### Fee Sharing Support
+
+If you have reward distribution configured on pump.fun (e.g. 50/50 split between addresses), pass the `MINT` env var so the API can detect the sharing config and use the correct instruction:
+
+```bash
+# Standard claim (no fee sharing)
+PRIVATE_KEY=YourKey node claim-fees.js
+
+# Fee sharing claim (rewards split to multiple addresses)
+PRIVATE_KEY=YourKey MINT=TokenMintAddress node claim-fees.js
+```
+
+Without `MINT`, the API uses a standard claim instruction. With `MINT`, it checks on-chain for a fee sharing config and automatically builds the `distribute_creator_fees` instruction that sends rewards to all configured shareholders.
 
 ## 🔐 Security
 
