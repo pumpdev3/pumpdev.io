@@ -29,6 +29,7 @@
 | **Trading API** | Generate buy/sell transactions for any pump.fun token |
 | **Real-Time WebSocket** | Stream live trades, new token launches, and wallet activity |
 | **Fee Claiming** | Automate creator royalty collection |
+| **Cashback Rewards** | Create cashback-enabled tokens and claim trader cashback |
 | **SOL Transfers** | Build transfer transactions for wallet management |
 
 ---
@@ -69,7 +70,7 @@ async function uploadMetadata() {
 }
 ```
 
-### Step 2: Create Token (No Dev Buy)
+### Step 2: Create Token (With Dev Buy)
 
 ```javascript
 import { VersionedTransaction, Connection, Keypair } from '@solana/web3.js';
@@ -87,14 +88,16 @@ async function createToken() {
       publicKey: creator.publicKey.toBase58(),
       name: 'PUMP FUN API',
       symbol: 'pumpdev.io',
-      uri: metadataUri  // From Step 1
+      uri: metadataUri,  // From Step 1
+      buyAmountSol: 0.1, // Dev buy amount in SOL
+      slippage: 30       // Slippage % for buy (default: 30)
     })
   });
 
   const result = await response.json();
   const mintKeypair = Keypair.fromSecretKey(bs58.decode(result.mintSecretKey));
   
-  // Sign transaction
+  // Sign transaction (create + dev buy in single tx)
   const tx = VersionedTransaction.deserialize(bs58.decode(result.transaction));
   tx.sign([creator, mintKeypair]);
 
@@ -406,6 +409,54 @@ await claimFees('YourPublicKey', 'TokenMintAddress');
 
 ---
 
+## Cashback Rewards
+
+Pump.fun's **cashback** feature redirects creator fees back to traders. Create cashback-enabled tokens and let users claim their accumulated rewards.
+
+### Create a Cashback-Enabled Token
+
+```javascript
+const response = await fetch(`${API_URL}/api/create`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    publicKey: creator.publicKey.toBase58(),
+    name: 'My Token',
+    symbol: 'MTK',
+    uri: metadataUri,
+    cashbackEnabled: true,  // Enable cashback for traders
+    buyAmountSol: 0.5,
+    slippage: 30
+  })
+});
+```
+
+### Claim Cashback
+
+Users can claim their accumulated cashback from both bonding curve and PumpSwap trading:
+
+```javascript
+async function claimCashback(publicKey) {
+  const response = await fetch(`${API_URL}/api/claim-cashback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      publicKey: publicKey,
+      program: 'both'  // 'both' | 'pump' | 'pumpswap'
+    })
+  });
+
+  const data = await response.arrayBuffer();
+  const tx = VersionedTransaction.deserialize(new Uint8Array(data));
+  tx.sign([keypair]);
+
+  const signature = await connection.sendTransaction(tx);
+  console.log('Cashback claimed:', signature);
+}
+```
+
+---
+
 ## Real-Time WebSocket Pump.fun Data (No pumpswap migration token data available at the moment)
 
 ```javascript
@@ -457,6 +508,7 @@ ws.on('message', (data) => {
 | `/api/trade-bundle` | POST | **🚀 FAST** - Build multiple sell txs in ONE request |
 | `/api/claim-account` | POST | Claim creator fees (standard) |
 | `/api/claim-distribute` | POST | Distribute creator fees (fee sharing / reward split) |
+| `/api/claim-cashback` | POST | Claim cashback rewards from trading |
 | `/api/transfer` | POST | Transfer specific SOL amount |
 | `/api/transfer-all` | POST | Transfer entire wallet balance |
 | `/ws` | WebSocket | Real-time market data streaming |
@@ -484,6 +536,7 @@ ws.on('message', (data) => {
 | Pump.fun Token Launch Bundle | 0.25% of buys |
 | Buy Tokens | 0.25% |
 | Sell Tokens | 0.25% |
+| Claim Cashback | **FREE** |
 | Create Token | **FREE** |
 | Create + Dev Buy | 0.25% of dev buy |
 | SOL Transfers | **FREE** |
