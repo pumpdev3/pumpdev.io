@@ -1,6 +1,6 @@
 # PumpDev API
 
-### 🚀 The #1 API for Pump.fun Token Creation, Trading & Jito Bundles
+### 🚀 The cheapest API for Pump.fun Token Creation, Trading & Jito Bundles
 
 [![Website](https://img.shields.io/badge/Website-pumpdev.io-7CFF6B?style=for-the-badge)](https://pumpdev.io)
 [![Docs](https://img.shields.io/badge/Docs-API%20Reference-blue?style=for-the-badge)](https://pumpdev.io/welcome)
