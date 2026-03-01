@@ -1,4 +1,4 @@
-# PumpDev API
+# PumpFun API
 
 ### 🚀 The cheapest API for Pump.fun Token Creation, Trading & Jito Bundles
 
