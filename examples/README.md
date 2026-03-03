@@ -28,8 +28,9 @@ node create-token.js
 | [`websocket.js`](./websocket.js) | Real-time trade data and new token alerts |
 | [`create-token.js`](./create-token.js) | Launch new tokens with optional dev buy |
 | [`sniper-bot.js`](./sniper-bot.js) | Automated new token sniper (educational) |
-| [`claim-fees.js`](./claim-fees.js) | Claim creator fees (supports fee sharing) |
+| [`claim-fees.js`](./claim-fees.js) | Claim creator fees, cashback rewards (supports fee sharing) |
 | [`transfer.js`](./transfer.js) | SOL transfer transactions |
+| [`lightning.js`](./lightning.js) | Lightning API: server-side wallet, trade, and token creation |
 
 ### Fee Sharing Support
 
@@ -44,6 +45,17 @@ PRIVATE_KEY=YourKey MINT=TokenMintAddress node claim-fees.js
 ```
 
 Without `MINT`, the API uses a standard claim instruction. With `MINT`, it checks on-chain for a fee sharing config and automatically builds the `distribute_creator_fees` instruction that sends rewards to all configured shareholders.
+
+### Cashback Rewards
+
+Pump.fun now supports **cashback-enabled tokens** where creator fees are redirected to traders. The `claim-fees.js` example includes a `claimCashback()` function that claims accumulated cashback from both bonding curve and PumpSwap programs:
+
+```bash
+PRIVATE_KEY=YourKey node claim-fees.js
+# Uncomment the claimCashback() call in main() to claim cashback
+```
+
+To create cashback-enabled tokens, pass `cashbackEnabled: true` in your `/api/create` request (see `create-token.js`).
 
 ## 🔐 Security
 
