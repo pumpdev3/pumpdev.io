@@ -1,6 +1,6 @@
 # PumpFun API
 
-### ⚡ The Fastest Pump.fun API — Lightning Trading & Token Creation
+**The Fastest Pump.fun API — Lightning Trading & Token Creation**
 
 [![Website](https://img.shields.io/badge/Website-pumpdev.io-7CFF6B?style=for-the-badge)](https://pumpdev.io)
 [![Docs](https://img.shields.io/badge/Docs-API%20Reference-blue?style=for-the-badge)](https://pumpdev.io/welcome)
@@ -13,11 +13,10 @@
 
 **PumpDev** is the fastest way to **trade and create tokens on pump.fun**. Our **Lightning API** lets you buy, sell, and launch tokens with **one HTTP call** — no wallet setup, no RPC management, no client-side signing.
 
-- ⚡ **Lightning API** — One HTTP call = trade done, server signs + sends to 20+ RPCs
-- ⚡ **Jito Bundle Support** — Atomic pump.fun token creation + multiple buys in one block
+- ⚡ **Lightning API** — One HTTP call = trade done, server signs + sends
+- 📦 **Jito Bundle Support** — Atomic pump.fun token creation + multiple buys in one block
 - 💰 **0.25% Commission** — Lowest fees in the market
 - 🔐 **Client-Side Signing** — Alternative mode: your private keys never leave your machine
-- 📦 **Jito Bundle Support** — Atomic pump.fun token creation + multiple buys in one block
 - 🛠️ **Developer-First** — Clean REST API with JavaScript/TypeScript examples
 
 ---
@@ -99,25 +98,6 @@ const { mint, signature, pumpfun } = await res.json();
 console.log('Token launched!', pumpfun);
 ```
 
-**Vanity Mint Address** — Use a pre-generated keypair so your token address ends with "pump":
-
-```javascript
-const res = await fetch('https://pumpdev.io/api/create-lightning?api-key=YOUR_KEY', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    name: 'My Token',
-    symbol: 'MTK',
-    image: 'https://example.com/logo.png',
-    mintKeypair: 'YOUR_VANITY_MINT_SECRET_KEY_BASE58', // from solana-keygen grind
-    buyAmountSol: 0.5
-  })
-});
-
-const { mint } = await res.json();
-console.log('Vanity mint:', mint); // e.g. "...pump"
-```
-
 > Full Lightning documentation: [Lightning Setup](https://pumpdev.io/lightning-setup) | [Lightning Trade](https://pumpdev.io/lightning-trade) | [Lightning Create](https://pumpdev.io/lightning-create)
 
 ---
@@ -126,7 +106,7 @@ console.log('Vanity mint:', mint); // e.g. "...pump"
 
 | Feature | Description |
 |---------|-------------|
-| **⚡ Lightning Trading** | One HTTP call buy/sell — server signs + sends to 20+ RPCs |
+| **⚡ Lightning Trading** | One HTTP call buy/sell — server signs + sends |
 | **⚡ Lightning Token Creation** | One HTTP call token launch with built-in metadata storage |
 | **Pump.fun Token Creation** | Create token on pump.fun with custom metadata and socials |
 | **Pump.fun Jito Bundle** | Launch token + dev buy + multiple buyers atomically |
@@ -138,7 +118,7 @@ console.log('Vanity mint:', mint); // e.g. "...pump"
 
 ---
 
-## Quick Start
+## Client Side Quick Start
 
 ### Installation
 
@@ -195,7 +175,7 @@ async function createToken() {
       uri: metadataUri,  // From Step 1
       buyAmountSol: 0.1, // Dev buy amount in SOL
       slippage: 30,      // Slippage % for buy (default: 30)
-      // mintKeypair: 'OPTIONAL_VANITY_MINT_SECRET_KEY_BASE58', // Optional: vanity address
+      // mintKeypair: 'OPTIONAL_MINT_SECRET_KEY_BASE58', // Optional: custom mint keypair
     })
   });
 
@@ -562,7 +542,9 @@ async function claimCashback(publicKey) {
 
 ---
 
-## Real-Time WebSocket Pump.fun Data (No pumpswap migration token data available at the moment)
+## Real-Time WebSocket Pump.fun Data
+
+> **Note:** PumpSwap migration token data is not yet available via WebSocket. This will be added in a future update.
 
 ```javascript
 import WebSocket from 'ws';
@@ -611,7 +593,6 @@ ws.on('message', (data) => {
 | `/api/wallet/import` | POST | **⚡ Lightning** — Import existing key + get API key |
 | `/api/trade-lightning` | POST | **⚡ Lightning** — Server-side sign + send trade |
 | `/api/create-lightning` | POST | **⚡ Lightning** — Server-side token creation |
-| `/api/metadata/upload` | POST | Upload token metadata (JSON or multipart) |
 | `/api/create` | POST | Create token on pump.fun (with optional dev buy) |
 | `/api/create-bundle` | POST | **Pump.fun Jito bundle** - create + multiple buyers |
 | `/api/trade-local` | POST | Generate buy/sell transactions |
@@ -622,63 +603,6 @@ ws.on('message', (data) => {
 | `/api/transfer` | POST | Transfer specific SOL amount |
 | `/api/transfer-all` | POST | Transfer entire wallet balance |
 | `/ws` | WebSocket | Real-time market data streaming |
-
----
-
-## ⚡ Lightning API — Instant Trading
-
-Lightning endpoints handle signing and sending server-side. One HTTP call = trade done.
-
-### Step 1: Create a Lightning Wallet
-
-```javascript
-const res = await fetch('https://pumpdev.io/api/wallet/create', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ label: 'my-bot' })
-});
-const { apiKey, publicKey, privateKey } = await res.json();
-```
-
-### Step 2: Fund It & Trade
-
-```javascript
-// Buy token — one call, server signs + sends
-const res = await fetch('https://pumpdev.io/api/trade-lightning?api-key=YOUR_KEY', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    action: 'buy',
-    mint: 'TokenMintAddress',
-    amount: 0.1,
-    denominatedInSol: 'true',
-    slippage: 15
-  })
-});
-
-const { signature, solscan } = await res.json();
-console.log('Done!', solscan);
-```
-
-### Lightning Token Creation
-
-```javascript
-const res = await fetch('https://pumpdev.io/api/create-lightning?api-key=YOUR_KEY', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    name: 'My Token',
-    symbol: 'MTK',
-    image: 'https://example.com/logo.png',
-    buyAmountSol: 0.5
-  })
-});
-
-const { mint, signature, pumpfun } = await res.json();
-console.log('Token launched!', pumpfun);
-```
-
-> Full documentation: [Lightning Setup](https://pumpdev.io/lightning-setup) | [Lightning Trade](https://pumpdev.io/lightning-trade) | [Lightning Create](https://pumpdev.io/lightning-create)
 
 ---
 
@@ -718,8 +642,8 @@ console.log('Token launched!', pumpfun);
 |---------|---------|--------|
 | ⚡ Lightning API | **Yes — one call trading** | No |
 | Jito Bundle Support | **Yes** | Limited |
-| Commission | **0.25%** (0.5% Lightning) | 1% |
-| Multi-RPC Blast | **20+ RPCs** | Single RPC |
+| Commission | **0.25%** | 1% |
+| Fast Execution | **Optimized** | Standard |
 | Private Key Security | **Local signing available** | Some require managed wallets |
 | Multiple Buyers Bundle | **Up to 4 wallets** | Often just 1 |
 | WebSocket Data | **Free, unlimited** | Often paid |
