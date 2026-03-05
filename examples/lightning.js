@@ -6,11 +6,9 @@
  *
  * This example demonstrates:
  * 1. Create a Lightning wallet (or import existing)
- * 2. Check wallet info
- * 3. Buy a token via Lightning
- * 4. Sell a token via Lightning
- * 5. Create a token via Lightning (with server-side metadata)
- * 6. Upload metadata separately
+ * 2. Buy a token via Lightning
+ * 3. Sell a token via Lightning
+ * 4. Create a token via Lightning
  *
  * Documentation: https://pumpdev.io/lightning-setup
  */
@@ -47,11 +45,11 @@ async function createWallet() {
     throw new Error(data.error || `HTTP ${res.status}`);
   }
 
-  console.log("✅ Wallet created!");
-  console.log("   📌 API Key:", data.apiKey);
-  console.log("   📌 Public Key:", data.publicKey);
-  console.log("   ⚠️  Private Key:", data.privateKey, "(SAVE SECURELY!)");
-  console.log("   ⚠️ ", data.warning);
+  console.log("Wallet created!");
+  console.log("  API Key:", data.apiKey);
+  console.log("  Public Key:", data.publicKey);
+  console.log("  Private Key:", data.privateKey, "(SAVE SECURELY!)");
+  console.log(" ", data.warning);
   return data;
 }
 
@@ -73,32 +71,10 @@ async function importWallet(privateKey) {
     throw new Error(data.error || `HTTP ${res.status}`);
   }
 
-  console.log("✅ Wallet imported!");
-  console.log("   📌 API Key:", data.apiKey);
-  console.log("   📌 Public Key:", data.publicKey);
-  console.log("   ⚠️ ", data.warning);
-  return data;
-}
-
-/**
- * Get wallet info (no private key returned).
- */
-async function getWalletInfo(apiKey) {
-  console.log("=== WALLET INFO ===\n");
-
-  const url = `${API_URL}/api/wallet/info?api-key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url, { method: "GET" });
-
-  const data = await res.json();
-  if (res.status !== 200) {
-    throw new Error(data.error || `HTTP ${res.status}`);
-  }
-
-  console.log("✅ Wallet info:");
-  console.log("   📌 Public Key:", data.publicKey);
-  console.log("   📅 Created:", data.createdAt);
-  console.log("   📅 Last Used:", data.lastUsedAt || "never");
-  if (data.label) console.log("   🏷️  Label:", data.label);
+  console.log("Wallet imported!");
+  console.log("  API Key:", data.apiKey);
+  console.log("  Public Key:", data.publicKey);
+  console.log(" ", data.warning);
   return data;
 }
 
@@ -127,9 +103,9 @@ async function buyToken(apiKey, mint, amountSol) {
     throw new Error(data.error || `HTTP ${res.status}`);
   }
 
-  console.log("✅ Buy executed!");
-  console.log("   📌 Signature:", data.signature);
-  console.log("   🔗 Solscan:", data.solscan);
+  console.log("Buy executed!");
+  console.log("  Signature:", data.signature);
+  console.log("  Solscan:", data.solscan);
   return data;
 }
 
@@ -158,14 +134,14 @@ async function sellToken(apiKey, mint, amountPercent) {
     throw new Error(data.error || `HTTP ${res.status}`);
   }
 
-  console.log("✅ Sell executed!");
-  console.log("   📌 Signature:", data.signature);
-  console.log("   🔗 Solscan:", data.solscan);
+  console.log("Sell executed!");
+  console.log("  Signature:", data.signature);
+  console.log("  Solscan:", data.solscan);
   return data;
 }
 
 /**
- * Create a token via Lightning (server stores metadata, builds, signs, sends).
+ * Create a token via Lightning — one call, server handles metadata + signing.
  */
 async function createToken(apiKey, params) {
   console.log("=== CREATE TOKEN (Lightning) ===\n");
@@ -182,50 +158,10 @@ async function createToken(apiKey, params) {
     throw new Error(data.error || `HTTP ${res.status}`);
   }
 
-  console.log("✅ Token created!");
-  console.log("   📌 Mint:", data.mint);
-  console.log("   📌 Signature:", data.signature);
-  console.log("   📌 Metadata URI:", data.metadataUri);
-  return data;
-}
-
-/**
- * Upload metadata separately (returns URI for use in create).
- */
-async function uploadMetadata({
-  name,
-  symbol,
-  image,
-  description,
-  twitter,
-  telegram,
-  website,
-}) {
-  console.log("=== UPLOAD METADATA ===\n");
-
-  const res = await fetch(`${API_URL}/api/metadata/upload`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name,
-      symbol,
-      image: image || "https://pumpdev.io/img/logo.jpg",
-      description: description || "Launched on pumpdev.io — the fastest Pump.fun API",
-      twitter: twitter || "",
-      telegram: telegram || "",
-      website: website || "",
-      showName: true,
-    }),
-  });
-
-  const data = await res.json();
-  if (res.status !== 200) {
-    throw new Error(data.error || `HTTP ${res.status}`);
-  }
-
-  console.log("✅ Metadata uploaded!");
-  console.log("   📌 UUID:", data.uuid);
-  console.log("   📌 URI:", data.uri);
+  console.log("Token created!");
+  console.log("  Mint:", data.mint);
+  console.log("  Signature:", data.signature);
+  console.log("  Metadata URI:", data.metadataUri);
   return data;
 }
 
@@ -234,56 +170,28 @@ async function uploadMetadata({
 // ============================================================================
 
 async function main() {
-  console.log(
-    "\n╔════════════════════════════════════════════════════════════╗",
-  );
-  console.log(
-    "║   PumpDev Lightning API Example                             ║",
-  );
-  console.log(
-    "║   https://pumpdev.io/lightning-setup                        ║",
-  );
-  console.log(
-    "╚════════════════════════════════════════════════════════════╝\n",
-  );
+  console.log("\n=== PumpDev Lightning API Example ===");
+  console.log("https://pumpdev.io/lightning-setup\n");
 
   const TOKEN_MINT = "5cRp2cAShKESQR17AgawG4KHXogkeRi5mF7Vdkek1ZSC";
 
   try {
-    // -----------------------------------------------------------------------
     // 1. Wallet: Create or use existing API key
-    // -----------------------------------------------------------------------
     let apiKey = API_KEY;
 
     if (!apiKey) {
       console.log(
-        "📌 No LIGHTNING_API_KEY in .env — creating new wallet for demo.\n",
+        "No LIGHTNING_API_KEY in .env — creating new wallet for demo.\n",
       );
       const created = await createWallet();
       apiKey = created.apiKey;
-      console.log("\n⚠️  Add to .env: LIGHTNING_API_KEY=" + apiKey);
-      console.log("   Fund the wallet before running buy/sell!\n");
+      console.log("\nAdd to .env: LIGHTNING_API_KEY=" + apiKey);
+      console.log("Fund the wallet before running buy/sell!\n");
     } else {
-      console.log("📌 Using LIGHTNING_API_KEY from .env\n");
+      console.log("Using LIGHTNING_API_KEY from .env\n");
     }
 
-    // -----------------------------------------------------------------------
-    // 2. Wallet info
-    // -----------------------------------------------------------------------
-    await getWalletInfo(apiKey);
-
-    // -----------------------------------------------------------------------
-    // 3. Upload metadata (standalone)
-    // -----------------------------------------------------------------------
-    const meta = await uploadMetadata({
-      name: "Lightning Demo",
-      symbol: "LGT",
-      image: "https://pumpdev.io/img/logo.jpg",
-    });
-
-    // -----------------------------------------------------------------------
-    // 4. Create token via Lightning (commented — creates real token!)
-    // -----------------------------------------------------------------------
+    // 2. Create token — just pass image URL, server stores metadata automatically
     /*
     const created = await createToken(apiKey, {
       name: "Lightning Demo",
@@ -295,52 +203,26 @@ async function main() {
     });
     */
 
-    // -----------------------------------------------------------------------
-    // 4b. Create token with vanity mint address (commented — creates real token!)
-    //     Use a pre-generated keypair so your token mint ends with "pump".
-    //     Generate one with: solana-keygen grind --ends-with pump:1
-    // -----------------------------------------------------------------------
-    /*
-    const created = await createToken(apiKey, {
-      name: "Lightning Demo",
-      symbol: "LGT",
-      image: "https://pumpdev.io/img/logo.jpg",
-      mintKeypair: "YOUR_VANITY_MINT_SECRET_KEY_BASE58", // base58 secret key
-      buyAmountSol: 0.01,
-      slippage: 30,
-      priorityFee: 0.005,
-    });
-    console.log("Vanity mint address:", created.mint); // e.g. "...pump"
-    */
-
-    // -----------------------------------------------------------------------
-    // 5. Buy token via Lightning (commented — spends real SOL!)
-    // -----------------------------------------------------------------------
-    /*
+    // 3. Buy token (commented — spends real SOL!)
+    /*k
     await buyToken(apiKey, TOKEN_MINT, 0.001);
     */
 
-    // -----------------------------------------------------------------------
-    // 6. Sell token via Lightning (commented — sells real tokens!)
-    // -----------------------------------------------------------------------
+    // 4. Sell token (commented — sells real tokens!)
     /*
     await sellToken(apiKey, TOKEN_MINT, "100%");
     */
 
-    // -----------------------------------------------------------------------
-    // 7. Import existing wallet (commented — for demo only)
-    // -----------------------------------------------------------------------
+    // 5. Import existing wallet (commented — for demo only)
     /*
     const privateKey = "YOUR_BASE58_PRIVATE_KEY";
     await importWallet(privateKey);
     */
 
-    console.log("========================================");
-    console.log("✅ Lightning API demo complete!");
-    console.log("   Uncomment buy/sell/create sections to run real trades.");
-    console.log("========================================\n");
+    console.log("\nLightning API demo complete!");
+    console.log("Uncomment buy/sell/create sections to run real trades.\n");
   } catch (err) {
-    console.error("\n❌ Error:", err.message);
+    console.error("\nError:", err.message);
     process.exit(1);
   }
 }

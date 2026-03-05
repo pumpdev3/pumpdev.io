@@ -4,9 +4,10 @@
  * Token creators on Pump.fun earn a percentage of all trading volume.
  * This example demonstrates how to claim accumulated fees.
  * 
- * Two modes:
+ * Three modes:
  *   1. Standard claim   — no fee sharing, just pass publicKey
  *   2. Fee sharing claim — rewards split to multiple addresses, pass mint too
+ *   3. Cashback claim   — claim accumulated cashback rewards from trading
  * 
  * If you configured fee sharing on pump.fun (rewards split to 2+ addresses),
  * you MUST pass the mint so the API can detect it and use the correct instruction.
@@ -247,6 +248,77 @@ async function distributeFees(mint) {
 }
 
 // ---------------------------------------------------------------------------
+// Claim cashback rewards (new pump.fun cashback feature)
+// ---------------------------------------------------------------------------
+
+/**
+ * Claim accumulated cashback rewards from trading cashback-enabled tokens.
+ * Cashback is collected from both the Pump (bonding curve) and PumpSwap (AMM) programs.
+ * 
+ * @param {string} program - Which program to claim from: 'both' | 'pump' | 'pumpswap'
+ */
+async function claimCashback(program = 'both') {
+  console.log('=== CLAIM CASHBACK REWARDS ===\n');
+
+  const keypair = Keypair.fromSecretKey(bs58.decode(PRIVATE_KEY));
+  const publicKey = keypair.publicKey.toBase58();
+  const connection = new Connection(RPC_URL, 'confirmed');
+
+  console.log('Wallet:', publicKey);
+  console.log('Program:', program);
+
+  const balanceBefore = await connection.getBalance(new PublicKey(publicKey));
+  console.log('Balance before:', (balanceBefore / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
+
+  console.log('\nBuilding cashback claim transaction...');
+
+  const response = await fetch(`${API_URL}/api/claim-cashback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      publicKey,
+      program,
+      priorityFee: 0.0001
+    })
+  });
+
+  if (response.status !== 200) {
+    const error = await response.json();
+    console.error('API Error:', error);
+    return;
+  }
+
+  const data = await response.arrayBuffer();
+  const tx = VersionedTransaction.deserialize(new Uint8Array(data));
+  tx.sign([keypair]);
+
+  console.log('Sending transaction...');
+
+  try {
+    const signature = await connection.sendTransaction(tx, {
+      skipPreflight: false,
+      maxRetries: 3
+    });
+
+    console.log('\nTransaction sent!');
+    console.log('Signature:', signature);
+    console.log(`Solscan: https://solscan.io/tx/${signature}`);
+
+    await connection.confirmTransaction(signature, 'confirmed');
+
+    const balanceAfter = await connection.getBalance(new PublicKey(publicKey));
+    const cashbackReceived = (balanceAfter - balanceBefore) / LAMPORTS_PER_SOL;
+
+    console.log('\n===================================');
+    console.log('Balance after:', (balanceAfter / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
+    console.log('Cashback claimed:', cashbackReceived.toFixed(4), 'SOL');
+    console.log('===================================');
+  } catch (err) {
+    console.error('Send error:', err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Automated claiming (runs every X hours)
 // ---------------------------------------------------------------------------
 
@@ -274,6 +346,11 @@ async function main() {
     // Standard claim (no fee sharing):
     await claimFees();
     
+    // Claim cashback rewards from trading cashback-enabled tokens:
+    // await claimCashback('both');      // Both programs
+    // await claimCashback('pump');      // Bonding curve only
+    // await claimCashback('pumpswap');  // PumpSwap AMM only
+
     // Distribute fees (fee sharing — 50/50 split etc.):
     // await distributeFees('YourTokenMintAddress');
 

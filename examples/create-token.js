@@ -10,6 +10,7 @@
  * - Create token + dev buy (single transaction, no Jito needed!)
  * - Create token + dev buy via Jito (for faster landing)
  * - Create token + multiple buyers (Jito bundle)
+ * - Cashback-enabled tokens (redirects creator fee to traders)
  *
  * IMPORTANT: jitoTip should ONLY be provided if you plan to send via Jito.
  * It adds a Jito tip instruction to the transaction. Without it, the tx
@@ -94,7 +95,7 @@ async function uploadMetadata() {
   formData.append("symbol", "pumpdev.io");
   formData.append(
     "description",
-    "The #1 API for Pump.fun Token Creation & Trading - pumpdev.io",
+    "The cheapest API for Pump.fun Token Creation & Trading - pumpdev.io",
   );
   formData.append("twitter", "https://x.com/PumpDevIO");
   formData.append("telegram", "https://t.me/pumpdev_io");
@@ -291,6 +292,7 @@ async function createTokenWithDevBuy() {
       buyAmountSol: 0.1, // Dev buy: 0.1 SOL worth of tokens
       slippage: 30, // 30% slippage for new token
       priorityFee: 0.0005, // Solana priority fee
+      // cashbackEnabled: true, // Optional: enable cashback (redirects creator fee to traders)
       // NO jitoTip — sending via standard RPC, not Jito
       // Only provide jitoTip if you plan to send via Jito (see Example 2b)
     }),
@@ -536,7 +538,6 @@ async function createTokenWithMultipleBuyers() {
 // ============================================================================
 
 async function main() {
-  console.log("");
   console.log("╔════════════════════════════════════════╗");
   console.log("║   PumpDev API - Token Creation Demo    ║");
   console.log("║   https://pumpdev.io                   ║");
