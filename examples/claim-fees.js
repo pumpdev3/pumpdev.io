@@ -72,7 +72,7 @@ async function claimFees() {
   // that sends rewards to all configured shareholders.
   console.log('\nBuilding claim transaction...');
   
-  const body = { publicKey, priorityFee: 0.0001 };
+  const body = { publicKey };
   if (MINT) body.mint = MINT;
 
   const response = await fetch(`${API_URL}/api/claim-account`, {
@@ -109,7 +109,6 @@ async function claimFees() {
 
     console.log('\nTransaction sent!');
     console.log('Signature:', signature);
-    console.log(`Solscan: https://solscan.io/tx/${signature}`);
 
     // Wait for confirmation
     await connection.confirmTransaction(signature, 'confirmed');
@@ -152,8 +151,7 @@ async function claimMultipleMints(mints) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       publicKey,
-      mints,
-      priorityFee: 0.0001
+      mints
     })
   });
 
@@ -214,8 +212,7 @@ async function distributeFees(mint) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       publicKey,
-      mint,
-      priorityFee: 0.0001
+      mint
     })
   });
 
@@ -239,7 +236,6 @@ async function distributeFees(mint) {
 
     console.log('\nFees distributed to all shareholders!');
     console.log('Signature:', signature);
-    console.log(`Solscan: https://solscan.io/tx/${signature}`);
 
     await connection.confirmTransaction(signature, 'confirmed');
   } catch (err) {
@@ -277,8 +273,7 @@ async function claimCashback(program = 'both') {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       publicKey,
-      program,
-      priorityFee: 0.0001
+      program
     })
   });
 
@@ -302,7 +297,6 @@ async function claimCashback(program = 'both') {
 
     console.log('\nTransaction sent!');
     console.log('Signature:', signature);
-    console.log(`Solscan: https://solscan.io/tx/${signature}`);
 
     await connection.confirmTransaction(signature, 'confirmed');
 

@@ -231,7 +231,6 @@ async function executeBuy(mint) {
     });
 
     console.log(`   ✅ Sent! ${signature.slice(0, 20)}...`);
-    console.log(`   🔗 https://solscan.io/tx/${signature}`);
 
     // 4. Wait for confirmation
     const confirmation = await connection.confirmTransaction(signature, 'confirmed');

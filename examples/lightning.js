@@ -94,7 +94,6 @@ async function buyToken(apiKey, mint, amountSol) {
       amount: amountSol,
       denominatedInSol: "true",
       slippage: 15,
-      priorityFee: 0.0005,
     }),
   });
 
@@ -105,7 +104,6 @@ async function buyToken(apiKey, mint, amountSol) {
 
   console.log("Buy executed!");
   console.log("  Signature:", data.signature);
-  console.log("  Solscan:", data.solscan);
   return data;
 }
 
@@ -125,7 +123,6 @@ async function sellToken(apiKey, mint, amountPercent) {
       amount: amountPercent,
       denominatedInSol: "false",
       slippage: 99,
-      priorityFee: 0.0005,
     }),
   });
 
@@ -136,7 +133,6 @@ async function sellToken(apiKey, mint, amountPercent) {
 
   console.log("Sell executed!");
   console.log("  Signature:", data.signature);
-  console.log("  Solscan:", data.solscan);
   return data;
 }
 
@@ -199,7 +195,6 @@ async function main() {
       image: "https://pumpdev.io/img/logo.jpg",
       buyAmountSol: 0.01,
       slippage: 30,
-      priorityFee: 0.005,
     });
     */
 

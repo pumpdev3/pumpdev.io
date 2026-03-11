@@ -53,7 +53,6 @@ async function buyToken(mint, amountSol) {
       amount: amountSol,
       denominatedInSol: "true",
       slippage: 15, // 15% slippage tolerance
-      priorityFee: 0.0005, // Priority fee in SOL
     }),
   });
 
@@ -83,7 +82,6 @@ async function buyToken(mint, amountSol) {
 
     console.log("\n✅ Transaction sent!");
     console.log("Signature:", signature);
-    console.log(`Solscan: https://solscan.io/tx/${signature}`);
 
     // Wait for confirmation
     const confirmation = await connection.confirmTransaction(
@@ -133,7 +131,6 @@ async function sellToken(mint, amountPercent = "100%") {
       amount: amountPercent,
       denominatedInSol: "false",
       slippage: 15,
-      priorityFee: 0.0005,
     }),
   });
 
@@ -165,7 +162,6 @@ async function sellToken(mint, amountPercent = "100%") {
 
     console.log("\n✅ Sell transaction sent!");
     console.log("Signature:", signature);
-    console.log(`Solscan: https://solscan.io/tx/${signature}`);
 
     return signature;
   } catch (err) {
@@ -203,7 +199,6 @@ async function sellBundleFast(mint, accounts, creatorPublicKey) {
       amount: "100%",
       denominatedInSol: "false",
       slippage: 99,
-      priorityFee: 0.005,
       creator: creatorPublicKey, // SPEED: skip bonding curve lookup
     }),
   });

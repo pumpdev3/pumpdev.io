@@ -48,7 +48,6 @@ async function transferSol(toAddress, amountSol) {
       fromPublicKey: fromPublicKey,
       toPublicKey: toAddress,
       amount: amountSol,
-      priorityFee: 0.0001
     })
   });
 
@@ -74,7 +73,6 @@ async function transferSol(toAddress, amountSol) {
 
     console.log('\n✅ Transaction sent!');
     console.log('Signature:', signature);
-    console.log(`Solscan: https://solscan.io/tx/${signature}`);
 
     await connection.confirmTransaction(signature, 'confirmed');
     console.log('Transfer complete!');
@@ -109,7 +107,6 @@ async function transferAllSol(toAddress) {
     body: JSON.stringify({
       fromPublicKey: fromPublicKey,
       toPublicKey: toAddress,
-      priorityFee: 0.0001
     })
   });
 
@@ -136,7 +133,6 @@ async function transferAllSol(toAddress) {
 
     console.log('\n✅ Transaction sent!');
     console.log('Signature:', signature);
-    console.log(`Solscan: https://solscan.io/tx/${signature}`);
 
     await connection.confirmTransaction(signature, 'confirmed');
     
@@ -179,8 +175,7 @@ async function batchTransfer(recipients) {
           fromPublicKey: fromPublicKey,
           toPublicKey: recipient.address,
           amount: recipient.amount,
-          priorityFee: 0.0001
-        })
+            })
       });
 
       if (response.status !== 200) {

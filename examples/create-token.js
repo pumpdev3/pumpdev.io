@@ -291,7 +291,6 @@ async function createTokenWithDevBuy() {
       uri,
       buyAmountSol: 0.1, // Dev buy: 0.1 SOL worth of tokens
       slippage: 30, // 30% slippage for new token
-      priorityFee: 0.0005, // Solana priority fee
       // cashbackEnabled: true, // Optional: enable cashback (redirects creator fee to traders)
       // NO jitoTip — sending via standard RPC, not Jito
       // Only provide jitoTip if you plan to send via Jito (see Example 2b)
@@ -344,7 +343,7 @@ async function createTokenWithDevBuy() {
   console.log("\n========================================");
   console.log("🎉 Token created with dev buy!");
   console.log(`🔗 https://pump.fun/${result.mint}`);
-  console.log(`🔍 https://solscan.io/tx/${sig}`);
+  console.log(`📤 Signature: ${sig}`);
   console.log("========================================\n");
 }
 
@@ -386,7 +385,6 @@ async function createTokenWithDevBuyJito() {
       uri,
       buyAmountSol: 0.1, // Dev buy: 0.1 SOL worth of tokens
       slippage: 30, // 30% slippage for new token
-      priorityFee: 0.0005, // Solana priority fee
       jitoTip: 0.01, // Only provide when sending via Jito — adds tip instruction
     }),
   });
