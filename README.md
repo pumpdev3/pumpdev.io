@@ -14,6 +14,7 @@
 **PumpDev** is the fastest way to **trade and create tokens on pump.fun**. Our **Lightning API** lets you buy, sell, and launch tokens with **one HTTP call** — no wallet setup, no RPC management, no client-side signing.
 
 - ⚡ **Lightning API** — One HTTP call = trade done, server signs + sends
+- ⚡ **Lightning Bundle** — One HTTP call = Jito bundle, server signs + sends via Jito
 - 📦 **Jito Bundle Support** — Atomic pump.fun token creation + multiple buys in one block
 - 💰 **0.25% Commission** — Lowest fees in the market
 - 🔐 **Client-Side Signing** — Alternative mode: your private keys never leave your machine
@@ -52,8 +53,8 @@ const res = await fetch('https://pumpdev.io/api/trade-lightning?api-key=YOUR_KEY
   })
 });
 
-const { signature, solscan } = await res.json();
-console.log('Done!', solscan);
+const { signature } = await res.json();
+console.log('Done!', signature);
 ```
 
 ### Sell with Lightning
@@ -72,8 +73,8 @@ const res = await fetch('https://pumpdev.io/api/trade-lightning?api-key=YOUR_KEY
   })
 });
 
-const { signature, solscan } = await res.json();
-console.log('Sold!', solscan);
+const { signature } = await res.json();
+console.log('Sold!', signature);
 ```
 
 ---
@@ -98,7 +99,95 @@ const { mint, signature, pumpfun } = await res.json();
 console.log('Token launched!', pumpfun);
 ```
 
-> Full Lightning documentation: [Lightning Setup](https://pumpdev.io/lightning-setup) | [Lightning Trade](https://pumpdev.io/lightning-trade) | [Lightning Create](https://pumpdev.io/lightning-create)
+> Full Lightning documentation: [Lightning Setup](https://pumpdev.io/lightning-setup) | [Lightning Trade](https://pumpdev.io/lightning-trade) | [Lightning Create](https://pumpdev.io/lightning-create) | [Lightning Bundle](https://pumpdev.io/lightning-bundle)
+
+---
+
+## ⚡ Lightning Bundle — Jito Protected One-Call Trading
+
+Lightning Bundle combines the simplicity of Lightning with Jito's MEV protection. One HTTP call — server signs and sends up to 4 transactions atomically via Jito. Mix buy, sell, and create in a single bundle.
+
+```javascript
+// Multi-wallet buy via Jito bundle — one call, MEV protected
+const res = await fetch('https://pumpdev.io/api/bundle-lightning', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    accounts: [
+      { apiKey: 'WALLET1_KEY', type: 'buy', amount: 0.1, denominatedInSol: 'true' },
+      { apiKey: 'WALLET2_KEY', type: 'buy', amount: 0.2, denominatedInSol: 'true' },
+    ],
+    mint: 'TokenMintAddress',
+    jitoTip: 0.01
+  })
+});
+const { results, mint } = await res.json();
+console.log(`${results.filter(r => r.signature).length}/${results.length} ok`);
+```
+
+```javascript
+// Create token + dev buy atomically — one call
+const res = await fetch('https://pumpdev.io/api/bundle-lightning', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    accounts: [
+      { apiKey: 'YOUR_KEY', type: 'create', name: 'My Token', symbol: 'MTK',
+        image: 'https://example.com/logo.png' },
+      { apiKey: 'YOUR_KEY', type: 'buy', amount: 0.5, denominatedInSol: 'true' },
+      { apiKey: 'SNIPER_KEY', type: 'buy', amount: 1.0, denominatedInSol: 'true' },
+    ],
+    jitoTip: 0.01
+  })
+});
+const { results, mint } = await res.json();
+console.log(`Token launched via Jito: https://pump.fun/${mint}`);
+```
+
+> Full Lightning Bundle documentation: [Lightning Bundle](https://pumpdev.io/lightning-bundle)
+
+---
+
+## Local-Sign Bundle — Client-Side Signing + Jito
+
+`POST /api/bundle` builds the same Jito bundle as `bundle-lightning` but returns **unsigned** transactions. You sign with your own private keys and send to Jito yourself. Uses `publicKey` per account — no wallet import or API key needed.
+
+```javascript
+import { VersionedTransaction, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
+
+const wallet = Keypair.fromSecretKey(bs58.decode('YOUR_PRIVATE_KEY'));
+
+// 1. Build unsigned bundle
+const res = await fetch('https://pumpdev.io/api/bundle', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    accounts: [
+      { publicKey: wallet.publicKey.toBase58(), type: 'buy', amount: 0.1, denominatedInSol: 'true' }
+    ],
+    mint: 'TokenMintAddress',
+    jitoTip: 0.01
+  })
+});
+const data = await res.json();
+
+// 2. Sign locally
+const signedTxs = data.transactions.map((entry) => {
+  const tx = VersionedTransaction.deserialize(bs58.decode(entry.transaction));
+  tx.sign([wallet]);
+  return bs58.encode(tx.serialize());
+});
+
+// 3. Send to Jito
+await fetch('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'sendBundle', params: [signedTxs] })
+});
+```
+
+> Full documentation: [Local-Sign Bundle](https://pumpdev.io/lightning-bundle#local-sign-apibundle)
 
 ---
 
@@ -108,6 +197,7 @@ console.log('Token launched!', pumpfun);
 |---------|-------------|
 | **⚡ Lightning Trading** | One HTTP call buy/sell — server signs + sends |
 | **⚡ Lightning Token Creation** | One HTTP call token launch with built-in metadata storage |
+| **⚡ Lightning Bundle** | One HTTP call Jito bundle — MEV-protected trades and launches |
 | **Pump.fun Token Creation** | Create token on pump.fun with custom metadata and socials |
 | **Pump.fun Jito Bundle** | Launch token + dev buy + multiple buyers atomically |
 | **Trading API** | Generate buy/sell transactions for any pump.fun token |
@@ -191,7 +281,7 @@ async function createToken() {
   const signature = await connection.sendTransaction(tx);
 
   console.log(`✅ Token: https://pump.fun/${result.mint}`);
-  console.log(`Transaction: https://solscan.io/tx/${signature}`);
+  console.log('Signature:', signature);
 }
 ```
 
@@ -222,7 +312,7 @@ async function buyToken(privateKey, mint, amountSol) {
   const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
   const signature = await connection.sendTransaction(tx);
   
-  console.log('Transaction:', `https://solscan.io/tx/${signature}`);
+  console.log('Signature:', signature);
 }
 ```
 
@@ -251,7 +341,7 @@ tx.sign([keypair]);
 const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
 const signature = await connection.sendTransaction(tx);
 
-console.log('Transaction:', `https://solscan.io/tx/${signature}`);
+console.log('Signature:', signature);
 ```
 
 ---
@@ -593,6 +683,8 @@ ws.on('message', (data) => {
 | `/api/wallet/import` | POST | **⚡ Lightning** — Import existing key + get API key |
 | `/api/trade-lightning` | POST | **⚡ Lightning** — Server-side sign + send trade |
 | `/api/create-lightning` | POST | **⚡ Lightning** — Server-side token creation |
+| `/api/bundle-lightning` | POST | **⚡ Lightning Bundle** — Up to 4 txs (buy/sell/create) — sends via Jito |
+| `/api/bundle` | POST | **Local-Sign Bundle** — Returns unsigned txs, you sign + send to Jito |
 | `/api/create` | POST | Create token on pump.fun (with optional dev buy) |
 | `/api/create-bundle` | POST | **Pump.fun Jito bundle** - create + multiple buyers |
 | `/api/trade-local` | POST | Generate buy/sell transactions |
@@ -641,6 +733,7 @@ ws.on('message', (data) => {
 | Feature | PumpDev | Others |
 |---------|---------|--------|
 | ⚡ Lightning API | **Yes — one call trading** | No |
+| ⚡ Lightning Bundle | **Yes — one call Jito trading** | No |
 | Jito Bundle Support | **Yes** | Limited |
 | Commission | **0.25%** | 1% |
 | Fast Execution | **Optimized** | Standard |
@@ -675,6 +768,9 @@ Working code examples in the [`/examples`](./examples) folder:
 | [`sniper-bot.js`](./examples/sniper-bot.js) | Automated new token sniper (educational) |
 | [`claim-fees.js`](./examples/claim-fees.js) | Claim creator fees from your tokens |
 | [`transfer.js`](./examples/transfer.js) | SOL transfer transactions |
+| [`lightning.js`](./examples/lightning.js) | Lightning API: server-side wallet, trade, and token creation |
+| [`lightning-bundle.js`](./examples/lightning-bundle.js) | Lightning Bundle: Jito-protected atomic bundles (buy/sell/create) |
+| [`bundle.js`](./examples/bundle.js) | Local-Sign Bundle: build unsigned txs, sign locally, send to Jito |
 
 ```bash
 # Run any example
@@ -693,6 +789,7 @@ Full documentation with detailed examples:
 - [⚡ Lightning Setup](https://pumpdev.io/lightning-setup)
 - [⚡ Lightning Trade](https://pumpdev.io/lightning-trade)
 - [⚡ Lightning Create](https://pumpdev.io/lightning-create)
+- [⚡ Lightning Bundle](https://pumpdev.io/lightning-bundle)
 - [Trading API (Client-Side)](https://pumpdev.io/trade-api)
 - [Token Creation & Jito Bundles](https://pumpdev.io/create-token)
 - [Real-Time WebSocket](https://pumpdev.io/data-api)
