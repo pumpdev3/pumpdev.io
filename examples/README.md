@@ -31,6 +31,8 @@ node create-token.js
 | [`claim-fees.js`](./claim-fees.js) | Claim creator fees, cashback rewards (supports fee sharing) |
 | [`transfer.js`](./transfer.js) | SOL transfer transactions |
 | [`lightning.js`](./lightning.js) | Lightning API: server-side wallet, trade, and token creation |
+| [`lightning-bundle.js`](./lightning-bundle.js) | Lightning Bundle: Jito-protected atomic bundles (buy/sell/create) |
+| [`bundle.js`](./bundle.js) | Local-Sign Bundle: build unsigned txs, sign locally, send to Jito |
 
 ### Fee Sharing Support
 
