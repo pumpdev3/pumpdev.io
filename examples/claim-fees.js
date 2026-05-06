@@ -164,8 +164,8 @@ async function claimMultipleMints(mints) {
       continue;
     }
 
-    const feeSharingLabel = txResult.feeSharing ? ' (fee sharing)' : '';
-    console.log(`  ${txResult.mint}: ${txResult.vaultBalance} SOL${feeSharingLabel}`);
+    const graduatedLabel = txResult.graduated ? ' (graduated)' : '';
+    console.log(`  ${txResult.mint}: claimable${graduatedLabel}`);
 
     try {
       const tx = VersionedTransaction.deserialize(bs58.decode(txResult.transaction));

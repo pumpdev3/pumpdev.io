@@ -34,9 +34,9 @@ async function transferSol(toAddress, amountSol) {
   console.log('=== TRANSFER SOL ===\n');
 
   const keypair = Keypair.fromSecretKey(bs58.decode(PRIVATE_KEY));
-  const fromPublicKey = keypair.publicKey.toBase58();
+  const publicKey = keypair.publicKey.toBase58();
 
-  console.log('From:', fromPublicKey);
+  console.log('From:', publicKey);
   console.log('To:', toAddress);
   console.log('Amount:', amountSol, 'SOL');
 
@@ -45,8 +45,8 @@ async function transferSol(toAddress, amountSol) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      fromPublicKey: fromPublicKey,
-      toPublicKey: toAddress,
+      publicKey: publicKey,
+      recipient: toAddress,
       amount: amountSol,
     })
   });
@@ -91,12 +91,12 @@ async function transferAllSol(toAddress) {
   console.log('\n=== TRANSFER ALL SOL ===\n');
 
   const keypair = Keypair.fromSecretKey(bs58.decode(PRIVATE_KEY));
-  const fromPublicKey = keypair.publicKey.toBase58();
+  const publicKey = keypair.publicKey.toBase58();
   const connection = new Connection(RPC_URL, 'confirmed');
 
   // Check current balance
-  const balance = await connection.getBalance(new PublicKey(fromPublicKey));
-  console.log('From:', fromPublicKey);
+  const balance = await connection.getBalance(new PublicKey(publicKey));
+  console.log('From:', publicKey);
   console.log('To:', toAddress);
   console.log('Current balance:', (balance / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
 
@@ -105,8 +105,8 @@ async function transferAllSol(toAddress) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      fromPublicKey: fromPublicKey,
-      toPublicKey: toAddress,
+      publicKey: publicKey,
+      recipient: toAddress,
     })
   });
 
@@ -137,7 +137,7 @@ async function transferAllSol(toAddress) {
     await connection.confirmTransaction(signature, 'confirmed');
     
     // Check final balance
-    const finalBalance = await connection.getBalance(new PublicKey(fromPublicKey));
+    const finalBalance = await connection.getBalance(new PublicKey(publicKey));
     console.log('Final balance:', (finalBalance / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
     
     return signature;
@@ -154,27 +154,27 @@ async function batchTransfer(recipients) {
   console.log('\n=== BATCH TRANSFER ===\n');
 
   const keypair = Keypair.fromSecretKey(bs58.decode(PRIVATE_KEY));
-  const fromPublicKey = keypair.publicKey.toBase58();
+  const publicKey = keypair.publicKey.toBase58();
   const connection = new Connection(RPC_URL, 'confirmed');
 
-  console.log('From:', fromPublicKey);
+  console.log('From:', publicKey);
   console.log('Recipients:', recipients.length);
   console.log();
 
   let successCount = 0;
   let totalSent = 0;
 
-  for (const recipient of recipients) {
-    console.log(`📤 Sending ${recipient.amount} SOL to ${recipient.address.slice(0, 8)}...`);
+  for (const rcpt of recipients) {
+    console.log(`📤 Sending ${rcpt.amount} SOL to ${rcpt.address.slice(0, 8)}...`);
 
     try {
       const response = await fetch(`${API_URL}/api/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fromPublicKey: fromPublicKey,
-          toPublicKey: recipient.address,
-          amount: recipient.amount,
+          publicKey: publicKey,
+          recipient: rcpt.address,
+          amount: rcpt.amount,
             })
       });
 
@@ -197,7 +197,7 @@ async function batchTransfer(recipients) {
       
       console.log(`   ✅ Success: ${signature.slice(0, 20)}...`);
       successCount++;
-      totalSent += recipient.amount;
+      totalSent += rcpt.amount;
     } catch (err) {
       console.log(`   ❌ Error: ${err.message}`);
     }
