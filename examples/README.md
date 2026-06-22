@@ -28,21 +28,36 @@ node create-token.js
 | [`websocket.js`](./websocket.js) | Real-time trade data and new token alerts |
 | [`create-token.js`](./create-token.js) | Launch new tokens with optional dev buy |
 | [`sniper-bot.js`](./sniper-bot.js) | Automated new token sniper (educational) |
-| [`claim-fees.js`](./claim-fees.js) | Claim creator fees, cashback rewards (supports fee sharing) |
+| [`claim-fees.js`](./claim-fees.js) | Check claimable balances, claim creator fees & cashback (supports fee sharing) |
 | [`transfer.js`](./transfer.js) | SOL transfer transactions |
 | [`lightning.js`](./lightning.js) | Lightning API: server-side wallet, trade, and token creation |
 | [`lightning-bundle.js`](./lightning-bundle.js) | Lightning Bundle: Jito-protected atomic bundles (buy/sell/create) |
 | [`bundle.js`](./bundle.js) | Local-Sign Bundle: build unsigned txs, sign locally, send to Jito |
+
+### Balance Checks & Claiming
+
+Both creator fees and cashback support **read-only balance checks** before claiming. Same URL, just GET instead of POST:
+
+```bash
+# Check claimable creator fees (default — runs checkClaimBalance)
+PRIVATE_KEY=YourKey node claim-fees.js
+
+# Check with a specific token mint (enables fee sharing / graduated detection)
+PRIVATE_KEY=YourKey MINT=TokenMintAddress node claim-fees.js
+```
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/claim-account` | Check claimable creator fee balance |
+| `POST` | `/api/claim-account` | Build claim transaction |
+| `GET` | `/api/claim-cashback` | Check claimable cashback balance |
+| `POST` | `/api/claim-cashback` | Build cashback claim transaction |
 
 ### Fee Sharing Support
 
 If you have reward distribution configured on pump.fun (e.g. 50/50 split between addresses), pass the `MINT` env var so the API can detect the sharing config and use the correct instruction:
 
 ```bash
-# Standard claim (no fee sharing)
-PRIVATE_KEY=YourKey node claim-fees.js
-
-# Fee sharing claim (rewards split to multiple addresses)
 PRIVATE_KEY=YourKey MINT=TokenMintAddress node claim-fees.js
 ```
 
@@ -50,11 +65,11 @@ Without `MINT`, the API uses a standard claim instruction. With `MINT`, it check
 
 ### Cashback Rewards
 
-Pump.fun now supports **cashback-enabled tokens** where creator fees are redirected to traders. The `claim-fees.js` example includes a `claimCashback()` function that claims accumulated cashback from both bonding curve and PumpSwap programs:
+Pump.fun supports **cashback-enabled tokens** where creator fees are redirected to traders. The `claim-fees.js` example includes `checkCashbackBalance()` and `claimCashback()` functions:
 
 ```bash
 PRIVATE_KEY=YourKey node claim-fees.js
-# Uncomment the claimCashback() call in main() to claim cashback
+# Uncomment checkCashbackBalance() or claimCashback() in main()
 ```
 
 To create cashback-enabled tokens, pass `cashbackEnabled: true` in your `/api/create` request (see `create-token.js`).
