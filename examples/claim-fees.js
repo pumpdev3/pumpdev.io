@@ -4,10 +4,12 @@
  * Token creators on Pump.fun earn a percentage of all trading volume.
  * This example demonstrates how to claim accumulated fees.
  * 
- * Three modes:
- *   1. Standard claim   — no fee sharing, just pass publicKey
- *   2. Fee sharing claim — rewards split to multiple addresses, pass mint too
- *   3. Cashback claim   — claim accumulated cashback rewards from trading
+ * Five modes:
+ *   1. Check balance    — read-only check of claimable creator fees (GET /api/claim-account)
+ *   2. Standard claim   — no fee sharing, just pass publicKey (POST /api/claim-account)
+ *   3. Fee sharing claim — rewards split to multiple addresses, pass mint too
+ *   4. Check cashback   — read-only check of claimable cashback (GET /api/claim-cashback)
+ *   5. Cashback claim   — claim accumulated cashback rewards from trading (POST /api/claim-cashback)
  * 
  * If you configured fee sharing on pump.fun (rewards split to 2+ addresses),
  * you MUST pass the mint so the API can detect it and use the correct instruction.
@@ -41,12 +43,57 @@ if (!PRIVATE_KEY) {
 }
 
 // ---------------------------------------------------------------------------
+// Check claimable creator fee balance (read-only, no transaction built)
+// ---------------------------------------------------------------------------
+
+/**
+ * Check how much creator fees are claimable before building a transaction.
+ * Uses GET /api/claim-account — same URL as the claim endpoint, just GET instead of POST.
+ */
+async function checkClaimBalance() {
+  console.log('=== CHECK CLAIMABLE CREATOR FEES ===\n');
+
+  const keypair = Keypair.fromSecretKey(bs58.decode(PRIVATE_KEY));
+  const publicKey = keypair.publicKey.toBase58();
+
+  console.log('Creator wallet:', publicKey);
+  if (MINT) console.log('Token mint:', MINT);
+
+  const params = new URLSearchParams({ publicKey });
+  if (MINT) params.set('mint', MINT);
+
+  const response = await fetch(`${API_URL}/api/claim-account?${params}`);
+  const data = await response.json();
+
+  if (response.status !== 200) {
+    console.error('API Error:', data);
+    return data;
+  }
+
+  console.log(`\nPump balance:     ${data.pumpBalance}`);
+  console.log(`PumpSwap balance: ${data.pumpSwapBalance}`);
+  console.log(`Total claimable:  ${data.totalClaimable} ${data.isNativeQuote ? 'SOL' : data.quoteMint}`);
+  console.log(`Graduated:        ${data.graduated}`);
+  console.log(`Fee sharing:      ${data.hasFeeSharing}`);
+
+  if (data.hasFeeSharing && data.shareholders.length > 0) {
+    console.log('\nShareholders:');
+    for (const sh of data.shareholders) {
+      console.log(`  ${sh.address} -> ${sh.sharePercent}%`);
+    }
+  }
+
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // Claim creator fees (auto-detects fee sharing when mint is provided)
 // ---------------------------------------------------------------------------
 
 /**
  * Claim creator fees for a wallet.
  * If MINT is set, the API auto-detects fee sharing and uses the correct instruction.
+ * Checks claimable balance first, then builds and sends the claim transaction.
  */
 async function claimFees() {
   console.log('=== CLAIM CREATOR FEES ===\n');
@@ -62,16 +109,28 @@ async function claimFees() {
     console.log('No mint provided (standard claim, no fee sharing detection)');
   }
 
-  // Check balance before claiming
-  const balanceBefore = await connection.getBalance(new PublicKey(publicKey));
-  console.log('Balance before:', (balanceBefore / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
+  // 1. Check claimable balance first (read-only)
+  const balanceParams = new URLSearchParams({ publicKey });
+  if (MINT) balanceParams.set('mint', MINT);
 
-  // Build claim transaction
-  // When mint is provided, the API checks for fee sharing config on-chain.
-  // If fee sharing is active, it builds a distribute_creator_fees instruction
-  // that sends rewards to all configured shareholders.
+  const balanceRes = await fetch(`${API_URL}/api/claim-account?${balanceParams}`);
+  const balanceData = await balanceRes.json();
+
+  if (balanceRes.status === 200) {
+    console.log(`\nClaimable: ${balanceData.totalClaimable} ${balanceData.isNativeQuote ? 'SOL' : balanceData.quoteMint}`);
+    if (balanceData.totalClaimable <= 0) {
+      console.log('No fees to claim right now.');
+      return;
+    }
+  }
+
+  // 2. Check SOL balance before claiming
+  const solBefore = await connection.getBalance(new PublicKey(publicKey));
+  console.log('SOL balance before:', (solBefore / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
+
+  // 3. Build claim transaction
   console.log('\nBuilding claim transaction...');
-  
+
   const body = { publicKey };
   if (MINT) body.mint = MINT;
 
@@ -83,12 +142,12 @@ async function claimFees() {
 
   if (response.status !== 200) {
     const error = await response.json();
-    
+
     if (error.error?.includes('No claimable fees')) {
       console.log('\nNo fees to claim right now.');
       return;
     }
-    
+
     console.error('API Error:', error);
     return;
   }
@@ -114,11 +173,11 @@ async function claimFees() {
     await connection.confirmTransaction(signature, 'confirmed');
 
     // Check new balance
-    const balanceAfter = await connection.getBalance(new PublicKey(publicKey));
-    const feesReceived = (balanceAfter - balanceBefore) / LAMPORTS_PER_SOL;
+    const solAfter = await connection.getBalance(new PublicKey(publicKey));
+    const feesReceived = (solAfter - solBefore) / LAMPORTS_PER_SOL;
 
     console.log('\n===================================');
-    console.log('Balance after:', (balanceAfter / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
+    console.log('Balance after:', (solAfter / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
     console.log('Fees claimed:', feesReceived.toFixed(4), 'SOL');
     console.log('===================================');
   } catch (err) {
@@ -244,13 +303,49 @@ async function distributeFees(mint) {
 }
 
 // ---------------------------------------------------------------------------
-// Claim cashback rewards (new pump.fun cashback feature)
+// Check claimable cashback balance (read-only, no transaction built)
+// ---------------------------------------------------------------------------
+
+/**
+ * Check how much cashback is claimable before building a transaction.
+ * Uses GET /api/claim-cashback — same URL as the claim endpoint, just GET instead of POST.
+ *
+ * @param {string} program - Which program to check: 'both' | 'pump' | 'pumpswap'
+ */
+async function checkCashbackBalance(program = 'both') {
+  console.log('=== CHECK CLAIMABLE CASHBACK ===\n');
+
+  const keypair = Keypair.fromSecretKey(bs58.decode(PRIVATE_KEY));
+  const publicKey = keypair.publicKey.toBase58();
+
+  console.log('Wallet:', publicKey);
+  console.log('Program:', program);
+
+  const params = new URLSearchParams({ publicKey, program });
+
+  const response = await fetch(`${API_URL}/api/claim-cashback?${params}`);
+  const data = await response.json();
+
+  if (response.status !== 200) {
+    console.error('API Error:', data);
+    return data;
+  }
+
+  console.log(`\nPump cashback:     ${data.pumpCashback}`);
+  console.log(`PumpSwap cashback: ${data.pumpSwapCashback}`);
+  console.log(`Total cashback:    ${data.totalCashback} ${data.isNativeQuote ? 'SOL' : data.quoteMint}`);
+
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Claim cashback rewards (pump.fun cashback feature)
 // ---------------------------------------------------------------------------
 
 /**
  * Claim accumulated cashback rewards from trading cashback-enabled tokens.
- * Cashback is collected from both the Pump (bonding curve) and PumpSwap (AMM) programs.
- * 
+ * Checks claimable balance first, then builds and sends the claim transaction.
+ *
  * @param {string} program - Which program to claim from: 'both' | 'pump' | 'pumpswap'
  */
 async function claimCashback(program = 'both') {
@@ -263,10 +358,28 @@ async function claimCashback(program = 'both') {
   console.log('Wallet:', publicKey);
   console.log('Program:', program);
 
-  const balanceBefore = await connection.getBalance(new PublicKey(publicKey));
-  console.log('Balance before:', (balanceBefore / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
+  // 1. Check claimable cashback first (read-only)
+  const balanceRes = await fetch(
+    `${API_URL}/api/claim-cashback?${new URLSearchParams({ publicKey, program })}`
+  );
+  const balanceData = await balanceRes.json();
 
-  console.log('\nBuilding cashback claim transaction...');
+  if (balanceRes.status === 200) {
+    console.log(`\nClaimable cashback: ${balanceData.totalCashback} ${balanceData.isNativeQuote ? 'SOL' : balanceData.quoteMint}`);
+    console.log(`  Pump:     ${balanceData.pumpCashback}`);
+    console.log(`  PumpSwap: ${balanceData.pumpSwapCashback}`);
+    if (balanceData.totalCashback <= 0) {
+      console.log('\nNo cashback to claim right now.');
+      return;
+    }
+  }
+
+  // 2. Check SOL balance before claiming
+  const solBefore = await connection.getBalance(new PublicKey(publicKey));
+  console.log('\nSOL balance before:', (solBefore / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
+
+  // 3. Build cashback claim transaction
+  console.log('Building cashback claim transaction...');
 
   const response = await fetch(`${API_URL}/api/claim-cashback`, {
     method: 'POST',
@@ -300,11 +413,11 @@ async function claimCashback(program = 'both') {
 
     await connection.confirmTransaction(signature, 'confirmed');
 
-    const balanceAfter = await connection.getBalance(new PublicKey(publicKey));
-    const cashbackReceived = (balanceAfter - balanceBefore) / LAMPORTS_PER_SOL;
+    const solAfter = await connection.getBalance(new PublicKey(publicKey));
+    const cashbackReceived = (solAfter - solBefore) / LAMPORTS_PER_SOL;
 
     console.log('\n===================================');
-    console.log('Balance after:', (balanceAfter / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
+    console.log('Balance after:', (solAfter / LAMPORTS_PER_SOL).toFixed(4), 'SOL');
     console.log('Cashback claimed:', cashbackReceived.toFixed(4), 'SOL');
     console.log('===================================');
   } catch (err) {
@@ -337,9 +450,15 @@ async function automatedClaiming(intervalHours = 24) {
 
 async function main() {
   try {
-    // Standard claim (no fee sharing):
-    await claimFees();
-    
+    // Check claimable balance (read-only, no transaction):
+    await checkClaimBalance();
+
+    // Check claimable cashback (read-only, no transaction):
+    // await checkCashbackBalance('both');
+
+    // Standard claim (checks balance first, then claims):
+    // await claimFees();
+
     // Claim cashback rewards from trading cashback-enabled tokens:
     // await claimCashback('both');      // Both programs
     // await claimCashback('pump');      // Bonding curve only
@@ -350,10 +469,10 @@ async function main() {
 
     // Multiple tokens (uncomment and add your mints):
     // await claimMultipleMints(['mint1...', 'mint2...']);
-    
+
     // Automated claiming (uncomment to use):
     // await automatedClaiming(24);
-    
+
   } catch (err) {
     console.error('Error:', err);
   }
