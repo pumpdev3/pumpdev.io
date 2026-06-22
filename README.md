@@ -1,6 +1,6 @@
 # PumpFun API
 
-**The Fastest Pump.fun API — Lightning Trading & Token Creation**
+**The Fastest Pump.fun & PumpSwap API — Lightning Trading & Token Creation**
 
 [![Website](https://img.shields.io/badge/Website-pumpdev.io-7CFF6B?style=for-the-badge)](https://pumpdev.io)
 [![Docs](https://img.shields.io/badge/Docs-API%20Reference-blue?style=for-the-badge)](https://pumpdev.io/welcome)
@@ -11,7 +11,7 @@
 
 ## What is PumpDev?
 
-**PumpDev** is the fastest way to **trade and create tokens on pump.fun**. Our **Lightning API** lets you buy, sell, and launch tokens with **one HTTP call** — no wallet setup, no RPC management, no client-side signing.
+**PumpDev** is the fastest way to **trade and create tokens on pump.fun and PumpSwap**. Our **Lightning API** lets you buy, sell, and launch tokens with **one HTTP call** — no wallet setup, no RPC management, no client-side signing.
 
 - ⚡ **Lightning API** — One HTTP call = trade done, server signs + sends
 - ⚡ **Lightning Bundle** — One HTTP call = Jito bundle, server signs + sends via Jito
@@ -61,6 +61,7 @@ console.log('Done!', signature);
 
 ```javascript
 // Sell 100% of tokens — one call
+// Token account is automatically closed after sell to reclaim ~0.002 SOL rent
 const res = await fetch('https://pumpdev.io/api/trade-lightning?api-key=YOUR_KEY', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -69,7 +70,8 @@ const res = await fetch('https://pumpdev.io/api/trade-lightning?api-key=YOUR_KEY
     mint: 'TokenMintAddress',
     amount: '100%',
     denominatedInSol: 'false',
-    slippage: 15
+    slippage: 15,
+    // closeTokenAccount: false  // Set to false to keep token account open
   })
 });
 
@@ -201,9 +203,10 @@ await fetch('https://mainnet.block-engine.jito.wtf/api/v1/bundles', {
 | **Pump.fun Token Creation** | Create token on pump.fun with custom metadata and socials |
 | **Pump.fun Jito Bundle** | Launch token + dev buy + multiple buyers atomically |
 | **Trading API** | Generate buy/sell transactions for any pump.fun token |
-| **Real-Time WebSocket** | Stream live trades, new token launches, and wallet activity |
+| **Real-Time WebSocket** | Stream live trades, launches, migrations, and wallet activity (bonding curve + PumpSwap AMM) |
 | **Fee Claiming** | Automate creator royalty collection |
 | **Cashback Rewards** | Create cashback-enabled tokens and claim trader cashback |
+| **Auto Close ATA** | Automatically closes token accounts after sell to reclaim ~0.002 SOL rent |
 | **SOL Transfers** | Build transfer transactions for wallet management |
 
 ---
@@ -322,6 +325,7 @@ async function buyToken(privateKey, mint, amountSol) {
 
 ```javascript
 // Sell 100% of tokens
+// Token account is automatically closed after sell to reclaim ~0.002 SOL rent
 const response = await fetch(`${API_URL}/api/trade-local`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -330,7 +334,8 @@ const response = await fetch(`${API_URL}/api/trade-local`, {
     action: 'sell',
     mint: 'TokenMintAddress',
     amount: '100%',           // Supports: '100%', '50%', or exact amount
-    slippage: 99
+    slippage: 99,
+    // closeTokenAccount: false  // Set to false to keep token account open
   })
 });
 
@@ -552,12 +557,21 @@ await sellBundleFast('TokenMint', accounts, accounts[0].keypair.publicKey.toBase
 
 ## Claim Creator Fees (Fee Sharing Support)
 
-Claim creator fees with full support for pump.fun's **fee sharing** feature. If you have rewards distributed to multiple addresses (50/50 split, etc.), just include the `mint` parameter and the API auto-detects the sharing config:
+Check claimable balance and claim creator fees. Same URL — **GET** reads the balance, **POST** builds the claim transaction. Full support for pump.fun's **fee sharing** feature.
 
 ```javascript
-async function claimFees(publicKey, mint = null) {
-  const body = { publicKey, priorityFee: 0.0001 };
-  if (mint) body.mint = mint; // Required when fee sharing is configured!
+// 1. Check claimable balance (read-only — no transaction built)
+const params = new URLSearchParams({ publicKey: 'YourPublicKey', mint: 'TokenMint' });
+const balanceRes = await fetch(`${API_URL}/api/claim-account?${params}`);
+const balance = await balanceRes.json();
+
+console.log(`Claimable: ${balance.totalClaimable} ${balance.isNativeQuote ? 'SOL' : balance.quoteMint}`);
+console.log(`  Pump: ${balance.pumpBalance}, PumpSwap: ${balance.pumpSwapBalance}`);
+console.log(`  Graduated: ${balance.graduated}, Fee sharing: ${balance.hasFeeSharing}`);
+
+// 2. Build and send claim transaction
+if (balance.totalClaimable > 0) {
+  const body = { publicKey: 'YourPublicKey', mint: 'TokenMint' };
 
   const response = await fetch(`${API_URL}/api/claim-account`, {
     method: 'POST',
@@ -572,15 +586,9 @@ async function claimFees(publicKey, mint = null) {
   const signature = await connection.sendTransaction(tx, { skipPreflight: false });
   console.log('Claimed:', signature);
 }
-
-// Standard claim (no fee sharing)
-await claimFees('YourPublicKey');
-
-// Fee sharing claim (rewards split to multiple addresses)
-await claimFees('YourPublicKey', 'TokenMintAddress');
 ```
 
-> **Important**: If claiming fails and you have fee sharing configured on pump.fun, make sure to include the `mint` parameter. Without it, the API uses the standard claim instruction which can't access the fee-sharing vault.
+> **Important**: Include the `mint` parameter for fee sharing, graduated tokens, and non-SOL quote mints. Without it, the API defaults to a wrapped-SOL creator vault sweep.
 
 ---
 
@@ -606,17 +614,26 @@ const response = await fetch(`${API_URL}/api/create`, {
 });
 ```
 
-### Claim Cashback
+### Check & Claim Cashback
 
-Users can claim their accumulated cashback from both bonding curve and PumpSwap trading:
+Same pattern — **GET** checks balance, **POST** claims:
 
 ```javascript
-async function claimCashback(publicKey) {
+// 1. Check claimable cashback (read-only)
+const params = new URLSearchParams({ publicKey: 'YourPublicKey', program: 'both' });
+const balanceRes = await fetch(`${API_URL}/api/claim-cashback?${params}`);
+const balance = await balanceRes.json();
+
+console.log(`Claimable cashback: ${balance.totalCashback} SOL`);
+console.log(`  Pump: ${balance.pumpCashback}, PumpSwap: ${balance.pumpSwapCashback}`);
+
+// 2. Claim if available
+if (balance.totalCashback > 0) {
   const response = await fetch(`${API_URL}/api/claim-cashback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      publicKey: publicKey,
+      publicKey: 'YourPublicKey',
       program: 'both'  // 'both' | 'pump' | 'pumpswap'
     })
   });
@@ -632,9 +649,9 @@ async function claimCashback(publicKey) {
 
 ---
 
-## Real-Time WebSocket Pump.fun Data
+## Real-Time WebSocket — Pump.fun & PumpSwap Data
 
-> **Note:** PumpSwap migration token data is not yet available via WebSocket. This will be added in a future update.
+Stream live trades, new token launches, migrations, and wallet activity from both **Pump.fun bonding curves** and **PumpSwap AMM pools**. Subscriptions automatically follow tokens across migration — no re-subscribe needed.
 
 ```javascript
 import WebSocket from 'ws';
@@ -644,13 +661,13 @@ const ws = new WebSocket('wss://pumpdev.io/ws');
 ws.on('open', () => {
   // Subscribe to new pump.fun token launches
   ws.send(JSON.stringify({ method: 'subscribeNewToken' }));
-  
-  // Subscribe to specific token trades
+
+  // Subscribe to specific token trades (bonding curve + PumpSwap AMM)
   ws.send(JSON.stringify({
     method: 'subscribeTokenTrade',
     keys: ['TokenMint1', 'TokenMint2']
   }));
-  
+
   // Track whale wallets
   ws.send(JSON.stringify({
     method: 'subscribeAccountTrade',
@@ -660,15 +677,25 @@ ws.on('open', () => {
 
 ws.on('message', (data) => {
   const event = JSON.parse(data.toString());
-  
+
   if (event.txType === 'create') {
     console.log(`🆕 New Token: ${event.name} (${event.symbol})`);
     console.log(`   Mint: ${event.mint}`);
     console.log(`   Market Cap: ${event.marketCapSol} SOL`);
   }
-  
+
   if (event.txType === 'buy' || event.txType === 'sell') {
-    console.log(`📊 ${event.txType.toUpperCase()}: ${event.solAmount} SOL`);
+    const src = event.source ? ` [${event.source}]` : '';
+    console.log(`📊 ${event.txType.toUpperCase()}${src}: ${event.solAmount} SOL`);
+    if (event.pool) console.log(`   Pool: ${event.pool}`);
+  }
+
+  if (event.txType === 'complete') {
+    console.log(`🔄 MIGRATION: ${event.mint} bonding curve completed`);
+  }
+
+  if (event.txType === 'create_pool') {
+    console.log(`🏊 POOL CREATED: ${event.mint} -> ${event.pool}`);
   }
 });
 ```
@@ -689,8 +716,10 @@ ws.on('message', (data) => {
 | `/api/create-bundle` | POST | **Pump.fun Jito bundle** - create + multiple buyers |
 | `/api/trade-local` | POST | Generate buy/sell transactions |
 | `/api/trade-bundle` | POST | **FAST** - Build multiple sell txs in ONE request |
+| `/api/claim-account` | GET | Check claimable creator fee balance (read-only) |
 | `/api/claim-account` | POST | Claim creator fees (standard) |
 | `/api/claim-distribute` | POST | Distribute creator fees (fee sharing / reward split) |
+| `/api/claim-cashback` | GET | Check claimable cashback balance (read-only) |
 | `/api/claim-cashback` | POST | Claim cashback rewards from trading |
 | `/api/transfer` | POST | Transfer specific SOL amount |
 | `/api/transfer-all` | POST | Transfer entire wallet balance |
@@ -703,7 +732,7 @@ ws.on('message', (data) => {
 | Method | Description |
 |--------|-------------|
 | `subscribeNewToken` | New token launches |
-| `subscribeTokenTrade` | Trades for specific tokens |
+| `subscribeTokenTrade` | Trades for specific tokens (bonding curve + PumpSwap, auto-follows migration) |
 | `subscribeAccountTrade` | Trades from specific wallets |
 | `unsubscribeNewToken` | Unsubscribe from new tokens |
 | `unsubscribeTokenTrade` | Unsubscribe from token trades |
@@ -739,6 +768,8 @@ ws.on('message', (data) => {
 | Fast Execution | **Optimized** | Standard |
 | Private Key Security | **Local signing available** | Some require managed wallets |
 | Multiple Buyers Bundle | **Up to 4 wallets** | Often just 1 |
+| PumpSwap AMM Support | **Full — trading + WebSocket** | Limited |
+| Auto Close Token Accounts | **Yes — reclaims rent** | No |
 | WebSocket Data | **Free, unlimited** | Often paid |
 
 ---
@@ -766,7 +797,7 @@ Working code examples in the [`/examples`](./examples) folder:
 | [`websocket.js`](./examples/websocket.js) | Real-time trade data and new token alerts |
 | [`create-token.js`](./examples/create-token.js) | Launch new tokens with optional dev buy |
 | [`sniper-bot.js`](./examples/sniper-bot.js) | Automated new token sniper (educational) |
-| [`claim-fees.js`](./examples/claim-fees.js) | Claim creator fees from your tokens |
+| [`claim-fees.js`](./examples/claim-fees.js) | Check balances & claim creator fees and cashback |
 | [`transfer.js`](./examples/transfer.js) | SOL transfer transactions |
 | [`lightning.js`](./examples/lightning.js) | Lightning API: server-side wallet, trade, and token creation |
 | [`lightning-bundle.js`](./examples/lightning-bundle.js) | Lightning Bundle: Jito-protected atomic bundles (buy/sell/create) |
@@ -809,7 +840,7 @@ Full documentation with detailed examples:
 
 ## Keywords
 
-`pump.fun` `pump.fun api` `pump.fun trading bot` `solana trading api` `solana memecoin` `pump.fun sniper` `pump.fun sdk` `solana dex api` `memecoin api` `pump.fun automation` `solana websocket` `pump.fun developer` `solana token trading` `bonding curve` `pump.fun integration`
+`pump.fun` `pump.fun api` `pumpswap` `pumpswap api` `pump.fun trading bot` `solana trading api` `solana memecoin` `pump.fun sniper` `pump.fun sdk` `solana dex api` `memecoin api` `pump.fun automation` `solana websocket` `pump.fun developer` `solana token trading` `bonding curve` `pump.fun integration`
 
 ---
 
