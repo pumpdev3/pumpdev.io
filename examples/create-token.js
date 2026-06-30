@@ -56,6 +56,10 @@ const BUYER1_KEY = process.env.BUYER1_KEY || "YOUR_BUYER1_PRIVATE_KEY_BASE58";
 const BUYER2_KEY = process.env.BUYER2_KEY || "YOUR_BUYER2_PRIVATE_KEY_BASE58";
 const BUYER3_KEY = process.env.BUYER3_KEY || "YOUR_BUYER3_PRIVATE_KEY_BASE58";
 
+// Pinata JWT for IPFS metadata uploads. Create a free Pinata account and set:
+// PINATA_JWT=your_pinata_jwt
+const PINATA_JWT = process.env.PINATA_JWT || "YOUR_PINATA_JWT";
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -63,22 +67,26 @@ const BUYER3_KEY = process.env.BUYER3_KEY || "YOUR_BUYER3_PRIVATE_KEY_BASE58";
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Upload token metadata to pump.fun IPFS
+ * Upload token metadata to IPFS via Pinata.
  *
  * This creates the token image and metadata that will be displayed on pump.fun.
  * You can customize the name, symbol, description, and social links.
+ * The old https://pump.fun/api/ipfs endpoint is no longer supported.
  *
- * @returns {Promise<string>} The metadata URI (ipfs://...)
+ * @returns {Promise<string>} The metadata URI
  */
 async function uploadMetadata() {
-  console.log("📤 Uploading metadata to pump.fun...");
+  if (!PINATA_JWT || PINATA_JWT === "YOUR_PINATA_JWT") {
+    throw new Error("Set PINATA_JWT in your .env before uploading metadata");
+  }
 
-  const formData = new FormData();
+  console.log("📤 Uploading metadata to Pinata...");
 
   // Option 1: Use pumpdev.io logo (for testing)
   const logoRes = await fetch("https://pumpdev.io/img/logo.jpg");
   const logoBuffer = await logoRes.arrayBuffer();
-  formData.append(
+  const imageForm = new FormData();
+  imageForm.append(
     "file",
     new Blob([logoBuffer], { type: "image/jpeg" }),
     "logo.jpg",
@@ -88,28 +96,46 @@ async function uploadMetadata() {
   // import fs from 'node:fs/promises';
   // import { Blob } from 'node:buffer';
   // const fileBuffer = await fs.readFile('./your-token-image.jpg');
-  // formData.append('file', new Blob([fileBuffer], { type: 'image/jpeg' }), 'token.jpg');
+  // imageForm.set('file', new Blob([fileBuffer], { type: 'image/jpeg' }), 'token.jpg');
 
-  // Token metadata - customize these for your token!
-  formData.append("name", "PUMP FUN API");
-  formData.append("symbol", "pumpdev.io");
-  formData.append(
-    "description",
-    "The cheapest API for Pump.fun Token Creation & Trading - pumpdev.io",
-  );
-  formData.append("twitter", "https://x.com/PumpDevIO");
-  formData.append("telegram", "https://t.me/pumpdev_io");
-  formData.append("website", "https://pumpdev.io/");
-  formData.append("showName", "true");
-
-  const res = await fetch("https://pump.fun/api/ipfs", {
+  const imageRes = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
     method: "POST",
-    body: formData,
+    headers: { Authorization: `Bearer ${PINATA_JWT}` },
+    body: imageForm,
   });
+  const imageResult = await imageRes.json();
+  if (!imageRes.ok) {
+    throw new Error(`Pinata image upload failed: ${JSON.stringify(imageResult)}`);
+  }
 
-  const result = await res.json();
-  console.log("✅ Metadata uploaded:", result.metadataUri);
-  return result.metadataUri;
+  const metadata = {
+    name: "PUMP FUN API",
+    symbol: "pumpdev.io",
+    description:
+      "The cheapest API for Pump.fun Token Creation & Trading - pumpdev.io",
+    image: `ipfs://${imageResult.IpfsHash}`,
+    twitter: "https://x.com/PumpDevIO",
+    telegram: "https://t.me/pumpdev_io",
+    website: "https://pumpdev.io/",
+    showName: true,
+  };
+
+  const metadataRes = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${PINATA_JWT}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ pinataContent: metadata }),
+  });
+  const metadataResult = await metadataRes.json();
+  if (!metadataRes.ok) {
+    throw new Error(`Pinata metadata upload failed: ${JSON.stringify(metadataResult)}`);
+  }
+
+  const metadataUri = `https://gateway.pinata.cloud/ipfs/${metadataResult.IpfsHash}`;
+  console.log("✅ Metadata uploaded:", metadataUri);
+  return metadataUri;
 }
 
 /**
@@ -290,7 +316,7 @@ async function createTokenWithDevBuy() {
       symbol: "pumpdev.io",
       uri,
       buyAmountSol: 0.1, // Dev buy: 0.1 SOL worth of tokens
-      slippage: 30, // 30% slippage for new token
+      slippage: 90, // Default slippage for new token launches
       // cashbackEnabled: true, // Optional: enable cashback (redirects creator fee to traders)
       // NO jitoTip — sending via standard RPC, not Jito
       // Only provide jitoTip if you plan to send via Jito (see Example 2b)
@@ -384,7 +410,7 @@ async function createTokenWithDevBuyJito() {
       symbol: "pumpdev.io",
       uri,
       buyAmountSol: 0.1, // Dev buy: 0.1 SOL worth of tokens
-      slippage: 30, // 30% slippage for new token
+      slippage: 90, // Default slippage for new token launches
       jitoTip: 0.01, // Only provide when sending via Jito — adds tip instruction
     }),
   });
@@ -480,7 +506,7 @@ async function createTokenWithMultipleBuyers() {
       symbol: "pumpdev.io",
       uri,
       buyAmountSol: 0.1, // Creator buys 0.1 SOL
-      slippage: 30,
+      slippage: 90,
       jitoTip: 0.02, // Jito tip — required for bundle, sent via Jito
       additionalBuyers: [
         // Up to 3 additional buyers

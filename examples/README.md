@@ -20,6 +20,8 @@ node websocket.js
 node create-token.js
 ```
 
+`create-token.js` also needs `PINATA_JWT` for metadata uploads because the old Pump.fun direct IPFS upload endpoint is no longer supported.
+
 ## 📁 Examples
 
 | File | Description |

@@ -194,7 +194,7 @@ async function main() {
       symbol: "LGT",
       image: "https://pumpdev.io/img/logo.jpg",
       buyAmountSol: 0.01,
-      slippage: 30,
+      slippage: 90,
     });
     */
 
